@@ -1,4 +1,14 @@
-from shared.config import ExternalInfrastructureSettings, NtfySettings
+import pytest
+from pydantic import ValidationError
+
+from shared.config import BrokerSettings, ExternalInfrastructureSettings, NtfySettings
+
+
+def test_broker_database_url_is_required(monkeypatch) -> None:
+    monkeypatch.delenv("BROKER_DATABASE_URL", raising=False)
+
+    with pytest.raises(ValidationError):
+        BrokerSettings()
 
 
 def test_ntfy_base_url_is_configurable(monkeypatch) -> None:

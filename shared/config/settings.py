@@ -9,6 +9,10 @@ class BrokerSettings(BaseSettings):
 
     host: str = "0.0.0.0"
     port: int = Field(default=8000, ge=1, le=65535)
+    database_url: str
+    delivery_timeout_seconds: float = Field(default=5.0, gt=0)
+    max_delivery_attempts: int = Field(default=3, ge=1)
+    retry_backoff_seconds: int = Field(default=30, ge=0)
 
 
 class NtfySettings(BaseSettings):
