@@ -2,10 +2,11 @@ services:
   wood-broker:
     build:
       context: .
-    command: uvicorn services.broker.app.main:app --host 0.0.0.0 --port 8000
+    command: uvicorn services.broker.app.main:create_runtime_app --factory --host 0.0.0.0 --port 8000
     environment:
       BROKER_HOST: 0.0.0.0
       BROKER_PORT: 8000
+      BROKER_DATABASE_URL: ${WOOD_EVENTS_DATABASE_URL:?Set WOOD_EVENTS_DATABASE_URL to your centralized PostgreSQL URL}
     ports:
       - "8001:8000"
     networks:
