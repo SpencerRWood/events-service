@@ -1,3 +1,37 @@
-# Production topology will later include wood-broker, wood-notify, and bundled ntfy.
-# Services, networks, volumes, ports, health checks, environment mappings, and image
-# references are intentionally deferred to later V0.1 stories.
+services:
+  wood-broker:
+    build:
+      context: .
+    command: uvicorn services.broker.app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      BROKER_HOST: 0.0.0.0
+      BROKER_PORT: 8000
+    ports:
+      - "8001:8000"
+    networks:
+      - wood-events-internal
+
+  wood-notify:
+    build:
+      context: .
+    command: uvicorn services.notify.app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      NOTIFY_HOST: 0.0.0.0
+      NOTIFY_PORT: 8000
+      NTFY_BASE_URL: http://ntfy:80
+    ports:
+      - "8002:8000"
+    depends_on:
+      - ntfy
+    networks:
+      - wood-events-internal
+
+  ntfy:
+    image: binwiederhier/ntfy:v2.11.0
+    command: serve
+    networks:
+      - wood-events-internal
+
+networks:
+  wood-events-internal:
+    driver: bridge

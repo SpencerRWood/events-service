@@ -2,4 +2,6 @@
 
 `wood-broker` will handle machine-to-machine event ingestion and distribution.
 
-Implementation is deferred to later V0.1 stories.
+The V0.1 foundation provides an independently runnable FastAPI service shell.
+Event ingestion, persistence, routing, consumer delivery, history, and retry
+behavior are deferred to later V0.1 stories.
