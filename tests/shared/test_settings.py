@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from shared.config import BrokerSettings, ExternalInfrastructureSettings, NtfySettings
+from shared.config import BrokerSettings, ExternalInfrastructureSettings, NotifySettings, NtfySettings
 
 
 def test_broker_database_url_is_required(monkeypatch) -> None:
@@ -9,6 +9,13 @@ def test_broker_database_url_is_required(monkeypatch) -> None:
 
     with pytest.raises(ValidationError):
         BrokerSettings()
+
+
+def test_notify_database_url_is_required(monkeypatch) -> None:
+    monkeypatch.delenv("NOTIFY_DATABASE_URL", raising=False)
+
+    with pytest.raises(ValidationError):
+        NotifySettings()
 
 
 def test_ntfy_base_url_is_configurable(monkeypatch) -> None:

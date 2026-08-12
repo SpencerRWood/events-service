@@ -33,7 +33,7 @@ The services can be started independently:
 
 ```bash
 uvicorn services.broker.app.main:create_runtime_app --factory --host 0.0.0.0 --port 8000
-uvicorn services.notify.app.main:app --host 0.0.0.0 --port 8000
+uvicorn services.notify.app.main:create_runtime_app --factory --host 0.0.0.0 --port 8000
 ```
 
 Or together with bundled ntfy:

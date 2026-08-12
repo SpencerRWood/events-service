@@ -1,8 +1,12 @@
 # wood-notify
 
-`wood-notify` will handle machine-to-human notification policy and delivery.
+`wood-notify` handles machine-to-human notification policy and delivery.
 
-The V0.1 foundation provides an independently runnable FastAPI service shell and
-configuration for replacing bundled ntfy with an external ntfy base URL.
-Notification policy, provider adapters, delivery history, and retry behavior are
-deferred to later V0.1 stories.
+The V0.1 notification lifecycle consumes broker events through `/broker-events`,
+matches configurable policy by severity, source, event type, and channel, and
+delivers through isolated ntfy, Telegram, and SMTP adapters.
+
+Delivery history and retry are persisted in the configured centralized
+PostgreSQL database via `NOTIFY_DATABASE_URL`. Provider credentials are read
+from environment/deployment configuration and are not stored in notification
+delivery records.

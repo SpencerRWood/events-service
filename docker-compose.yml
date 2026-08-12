@@ -15,10 +15,11 @@ services:
   wood-notify:
     build:
       context: .
-    command: uvicorn services.notify.app.main:app --host 0.0.0.0 --port 8000
+    command: uvicorn services.notify.app.main:create_runtime_app --factory --host 0.0.0.0 --port 8000
     environment:
       NOTIFY_HOST: 0.0.0.0
       NOTIFY_PORT: 8000
+      NOTIFY_DATABASE_URL: ${WOOD_EVENTS_DATABASE_URL:?Set WOOD_EVENTS_DATABASE_URL to your centralized PostgreSQL URL}
       NTFY_BASE_URL: http://ntfy:80
     ports:
       - "8002:8000"
