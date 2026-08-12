@@ -1,0 +1,3 @@
+# Production topology will later include wood-broker, wood-notify, and bundled ntfy.
+# Services, networks, volumes, ports, health checks, environment mappings, and image
+# references are intentionally deferred to later V0.1 stories.

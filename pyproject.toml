@@ -1,0 +1,18 @@
+[project]
+name = "wood-events-service"
+version = "0.1.0"
+description = "Scaffold for the Wood Events Service repository."
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.setuptools]
+packages = [
+  "services.broker",
+  "services.broker.app",
+  "services.notify",
+  "services.notify.app",
+  "shared",
+  "shared.models",
+  "shared.config",
+  "shared.logging",
+]
