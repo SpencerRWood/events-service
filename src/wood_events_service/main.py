@@ -1,15 +1,146 @@
-"""Application factory for the FastAPI service."""
+"""Thin independently runnable broker and notify HTTP applications."""
 
-from fastapi import FastAPI
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import Annotated, Literal
 
-from wood_events_service.api.router import api_router
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
+
+from wood_events_service.config import Scope, Settings
+from wood_events_service.contracts import EventEnvelope, NotificationRequest, Receipt
+from wood_events_service.security import (
+    SecretPolicy,
+    ServiceAuth,
+    StructuredFormatter,
+    TokenAuth,
+)
+from wood_events_service.storage import (
+    IdempotencyConflictError,
+    Store,
+    check_schema,
+    make_engine,
+)
+
+Service = Literal["broker", "notify"]
+bearer = HTTPBearer(auto_error=False)
 
 
-def create_app() -> FastAPI:
-    """Create the FastAPI application."""
-    app = FastAPI(title="wood-events-service")
-    app.include_router(api_router)
+def create_app(  # noqa: PLR0915 -- keep routes and lifespan service-scoped
+    service: Service,
+    settings: Settings | None = None,
+    *,
+    engine: Engine | None = None,
+    auth: ServiceAuth | None = None,
+) -> FastAPI:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        try:
+            configured = settings or Settings()  # type: ignore[call-arg]
+            active_engine = engine or make_engine(configured)
+        except Exception:
+            raise RuntimeError("Invalid runtime configuration") from None
+        policy = SecretPolicy(configured.secret_values())
+        handler = logging.StreamHandler()
+        handler.setFormatter(StructuredFormatter(policy))
+        logger = logging.getLogger(f"wes.{service}")
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
+        app.state.store = Store(active_engine, policy)
+        app.state.auth = auth or TokenAuth(configured.producer_credentials)
+        app.state.logger = logger
+        try:
+            check_schema(active_engine)
+            yield
+        except SQLAlchemyError:
+            raise RuntimeError("Database unavailable or migration required") from None
+        finally:
+            logger.removeHandler(handler)
+            handler.close()
+            if engine is None:
+                active_engine.dispose()
+
+    app = FastAPI(title=f"wood-{service}", lifespan=lifespan)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(
+        _request: Request, _error: RequestValidationError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=422, content={"detail": "Invalid v1 contract"})
+
+    @app.exception_handler(SQLAlchemyError)
+    async def database_error(
+        _request: Request, _error: SQLAlchemyError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=503, content={"detail": "Storage unavailable"})
+
+    @app.get("/health/live")
+    def live() -> dict[str, str]:
+        return {"status": "ok", "service": f"wood-{service}"}
+
+    @app.get("/health/ready")
+    def ready(request: Request) -> dict[str, str]:
+        check_schema(request.app.state.store.engine)
+        return {"status": "ready", "service": f"wood-{service}"}
+
+    scope: Scope = "events:write" if service == "broker" else "notifications:write"
+
+    def producer(
+        request: Request,
+        credential: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+    ) -> str:
+        boundary: ServiceAuth = request.app.state.auth
+        return boundary.authenticate(
+            credential.credentials if credential else "", scope
+        )
+
+    def accept(
+        request: Request, envelope: EventEnvelope | NotificationRequest, source: str
+    ) -> Receipt:
+        if envelope.source != source:
+            raise HTTPException(403, "Credential source does not match payload")
+        store: Store = request.app.state.store
+        try:
+            receipt = store.accept(envelope)
+        except ValueError:
+            raise HTTPException(
+                422, "Credential-bearing content is forbidden"
+            ) from None
+        except IdempotencyConflictError:
+            raise HTTPException(409, "Identity reused with different content") from None
+        identifier = "event_id" if service == "broker" else "request_id"
+        request.app.state.logger.info(
+            "accepted",
+            extra={
+                identifier: receipt.record_id,
+                "correlation_id": receipt.correlation_id,
+            },
+        )
+        return receipt
+
+    if service == "broker":
+
+        @app.post("/v1/events", status_code=201)
+        def ingest_event(
+            request: Request,
+            envelope: EventEnvelope,
+            source: Annotated[str, Depends(producer)],
+        ) -> Receipt:
+            return accept(request, envelope, source)
+    else:
+
+        @app.post("/v1/notifications", status_code=201)
+        def ingest_notification(
+            request: Request,
+            envelope: NotificationRequest,
+            source: Annotated[str, Depends(producer)],
+        ) -> Receipt:
+            return accept(request, envelope, source)
+
     return app
-
-
-app = create_app()
