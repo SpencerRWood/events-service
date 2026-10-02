@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "wood-events-service"
 version = "0.0.1"
-description = "A minimal FastAPI service template baseline."
+description = "Internal event and human interaction transport foundation."
 readme = "README.md"
 requires-python = ">=3.14"
 authors = [
@@ -22,6 +22,12 @@ classifiers = [
 dependencies = [
   "fastapi",
   "uvicorn[standard]",
+  "pydantic>=2.11,<3",
+  "pydantic-settings>=2.10,<3",
+  "sqlalchemy>=2.0,<3",
+  "alembic>=1.16,<2",
+  "psycopg[binary]>=3.2,<4",
+  "httpx>=0.28,<1",
 ]
 
 [dependency-groups]
@@ -49,6 +55,16 @@ epic_id = 454
 
 [tool.wood.workflow]
 output_directory = "/private/tmp"
+
+[tool.wood.verify]
+version = 1
+retry_safe = true
+
+[[tool.wood.verify.checks]]
+name = "postgres-foundation"
+argv = ["uv", "run", "python", "scripts/verify_foundation.py"]
+timeout_seconds = 60
+required = true
 
 [tool.hatch.build.targets.sdist]
 exclude = [
@@ -111,6 +127,9 @@ ignore = [
 "tests/**/*.py" = [
   "S101",
 ]
+"scripts/isolated_postgres.py" = ["S603", "S607"]
+"scripts/verify_foundation.py" = ["T201"]
+"src/wood_events_service/runtime_check.py" = ["T201"]
 
 [tool.ruff.format]
 quote-style = "double"

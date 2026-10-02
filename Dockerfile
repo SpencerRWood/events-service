@@ -16,4 +16,4 @@ COPY --from=build /opt/venv /opt/venv
 RUN useradd --create-home --uid 10001 app
 USER app
 EXPOSE 8000
-CMD ["uvicorn", "wood_events_service.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "wood_events_service.broker:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
