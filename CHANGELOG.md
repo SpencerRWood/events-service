@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v0.3.0 (2026-10-03)
+
+### Features
+
+- Implement human notification and interaction lifecycle
+  ([#7](https://github.com/SpencerRWood/wood-events-service/pull/7),
+  [`3ac239a`](https://github.com/SpencerRWood/wood-events-service/commit/3ac239a59113cf9b40127374b4e153ebb6dc218c))
+
+
 ## v0.2.0 (2026-10-03)
 
 ### Features
