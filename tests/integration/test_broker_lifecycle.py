@@ -16,15 +16,15 @@ from sqlalchemy.orm import Session
 from tests.integration.test_foundation import HEADERS
 from tests.unit.test_contracts_security import event
 
-from wood_events_service.config import Settings
-from wood_events_service.contracts import EventEnvelope
-from wood_events_service.delivery import BrokerWorker, DeliveryResult
-from wood_events_service.history import BrokerHistory
-from wood_events_service.main import create_app
-from wood_events_service.retention import cleanup
-from wood_events_service.routing import Subscription, SubscriptionRouter
-from wood_events_service.security import SecretPolicy
-from wood_events_service.storage import BrokerJob, EventRecord, Store
+from events_service.config import Settings
+from events_service.contracts import EventEnvelope
+from events_service.delivery import BrokerWorker, DeliveryResult
+from events_service.history import BrokerHistory
+from events_service.main import create_app
+from events_service.retention import cleanup
+from events_service.routing import Subscription, SubscriptionRouter
+from events_service.security import SecretPolicy
+from events_service.storage import BrokerJob, EventRecord, Store
 
 
 @pytest.fixture
@@ -90,7 +90,7 @@ def test_atomic_jobs_duplicates_and_invalid_input(
         with Session(broker_engine) as session:
             assert session.scalar(select(func.count()).select_from(BrokerJob)) == 2
         with patch(
-            "wood_events_service.routing.SubscriptionRouter.destinations",
+            "events_service.routing.SubscriptionRouter.destinations",
             side_effect=SQLAlchemyError("failure"),
         ):
             assert (

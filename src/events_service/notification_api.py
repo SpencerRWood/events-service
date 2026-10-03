@@ -10,20 +10,20 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from wood_events_service.config import Scope
-from wood_events_service.contracts import EventEnvelope, Receipt
-from wood_events_service.notification_lifecycle import NotificationLifecycle
-from wood_events_service.notification_models import NotificationJob, NotificationState
-from wood_events_service.providers import TelegramProvider
-from wood_events_service.security import ServiceAuth
-from wood_events_service.storage import (
+from events_service.config import Scope
+from events_service.contracts import EventEnvelope, Receipt
+from events_service.notification_lifecycle import NotificationLifecycle
+from events_service.notification_models import NotificationJob, NotificationState
+from events_service.providers import TelegramProvider
+from events_service.security import ServiceAuth
+from events_service.storage import (
     IdempotencyConflictError,
     NotificationRecord,
     NotifyDelivery,
     ResponseRecord,
     Store,
 )
-from wood_events_service.telegram_callbacks import TelegramUpdate, capture
+from events_service.telegram_callbacks import TelegramUpdate, capture
 
 Limit = Annotated[int, Query(ge=1, le=100)]
 Offset = Annotated[int, Query(ge=0, le=100000)]

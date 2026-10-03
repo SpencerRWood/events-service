@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from wood_events_service.storage import BrokerDelivery, BrokerJob, EventRecord
+from events_service.storage import BrokerDelivery, BrokerJob, EventRecord
 
 
 class BrokerHistory:

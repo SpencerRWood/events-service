@@ -13,22 +13,22 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
-from wood_events_service.broker_api import register_broker_routes
-from wood_events_service.config import Scope, Settings
-from wood_events_service.contracts import EventEnvelope, NotificationRequest, Receipt
-from wood_events_service.delivery import BrokerWorker, HttpWebhook, Webhook
-from wood_events_service.history import BrokerHistory
-from wood_events_service.notification_api import register_notification_routes
-from wood_events_service.notification_lifecycle import NotificationLifecycle
-from wood_events_service.providers import Provider, provider_registry
-from wood_events_service.routing import SubscriptionRouter
-from wood_events_service.security import (
+from events_service.broker_api import register_broker_routes
+from events_service.config import Scope, Settings
+from events_service.contracts import EventEnvelope, NotificationRequest, Receipt
+from events_service.delivery import BrokerWorker, HttpWebhook, Webhook
+from events_service.history import BrokerHistory
+from events_service.notification_api import register_notification_routes
+from events_service.notification_lifecycle import NotificationLifecycle
+from events_service.providers import Provider, provider_registry
+from events_service.routing import SubscriptionRouter
+from events_service.security import (
     SecretPolicy,
     ServiceAuth,
     StructuredFormatter,
     TokenAuth,
 )
-from wood_events_service.storage import (
+from events_service.storage import (
     IdempotencyConflictError,
     Store,
     check_schema,

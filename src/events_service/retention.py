@@ -6,14 +6,14 @@ from sqlalchemy import delete, exists, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from wood_events_service.config import Settings
-from wood_events_service.notification_models import (
+from events_service.config import Settings
+from events_service.notification_models import (
     NotificationJob,
     NotificationMessage,
     NotificationState,
     SuppressionWindow,
 )
-from wood_events_service.storage import (
+from events_service.storage import (
     BrokerDelivery,
     BrokerJob,
     EventRecord,

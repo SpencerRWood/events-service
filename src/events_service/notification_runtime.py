@@ -10,7 +10,7 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 import httpx
 
-from wood_events_service.providers import callback_data
+from events_service.providers import callback_data
 
 
 def wait_channels(
@@ -36,7 +36,7 @@ def wait_channels(
 
 
 def verify_notifications(environment: dict[str, str], token: str) -> None:
-    from wood_events_service.runtime_check import require, running  # noqa: PLC0415
+    from events_service.runtime_check import require, running  # noqa: PLC0415
 
     received: list[tuple[str, dict[str, object]]] = []
     bot_token, webhook_secret = secrets.token_hex(32), secrets.token_hex(32)

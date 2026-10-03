@@ -8,14 +8,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from wood_events_service.contracts import Name, NormalizedResponse, NotificationRequest
-from wood_events_service.notification_lifecycle import NotificationLifecycle
-from wood_events_service.notification_models import (
+from events_service.contracts import Name, NormalizedResponse, NotificationRequest
+from events_service.notification_lifecycle import NotificationLifecycle
+from events_service.notification_models import (
     NotificationMessage,
     NotificationState,
 )
-from wood_events_service.providers import parse_callback
-from wood_events_service.storage import NotificationRecord, ResponseRecord
+from events_service.providers import parse_callback
+from events_service.storage import NotificationRecord, ResponseRecord
 
 
 class TelegramUser(BaseModel):

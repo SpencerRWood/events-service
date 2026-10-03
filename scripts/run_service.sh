@@ -9,6 +9,6 @@ case "$runtime_service" in
   *) echo "Usage: bash scripts/run_service.sh [environment] [broker|notify]" >&2; exit 2 ;;
 esac
 
-exec infisical run --env="$runtime_env" --path=/wood-events-service -- \
-  uv run uvicorn "wood_events_service.${runtime_service}:app" \
+exec infisical run --env="$runtime_env" --path=/events-service -- \
+  uv run uvicorn "events_service.${runtime_service}:app" \
   --host 127.0.0.1 --port "$runtime_port" --no-access-log

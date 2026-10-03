@@ -1,4 +1,4 @@
-# Wood Events Service
+# Events Service
 
 Follow the active R1 Story and revised requirements. Keep one Story per branch.
 Keep wood-broker and wood-notify independently runnable; infrastructure owns

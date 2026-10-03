@@ -13,17 +13,17 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from wood_events_service.config import Settings
-from wood_events_service.contracts import NotificationRequest
-from wood_events_service.notification_models import (
+from events_service.config import Settings
+from events_service.contracts import NotificationRequest
+from events_service.notification_models import (
     NotificationJob,
     NotificationMessage,
     NotificationState,
     SuppressionWindow,
 )
-from wood_events_service.notification_policy import NotificationRouter
-from wood_events_service.providers import Provider, ProviderResult
-from wood_events_service.storage import NotificationRecord, NotifyDelivery
+from events_service.notification_policy import NotificationRouter
+from events_service.providers import Provider, ProviderResult
+from events_service.storage import NotificationRecord, NotifyDelivery
 
 
 class NotificationLifecycle:

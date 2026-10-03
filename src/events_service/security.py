@@ -9,7 +9,7 @@ from typing import Protocol
 
 from fastapi import HTTPException
 
-from wood_events_service.config import ProducerCredential, Scope
+from events_service.config import ProducerCredential, Scope
 
 SENSITIVE_KEY = re.compile(
     r"password|secret|credential|authorization|token|api[_-]?key|database[_-]?url",

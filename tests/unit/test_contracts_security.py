@@ -10,15 +10,15 @@ from fastapi import HTTPException
 from pydantic import SecretStr, ValidationError
 from tests.conftest import TEST_TOKEN
 
-from wood_events_service.config import ProducerCredential, Settings
-from wood_events_service.contracts import (
+from events_service.config import ProducerCredential, Settings
+from events_service.contracts import (
     EventEnvelope,
     NormalizedResponse,
     NotificationRequest,
     ResponseAction,
     Severity,
 )
-from wood_events_service.security import SecretPolicy, StructuredFormatter, TokenAuth
+from events_service.security import SecretPolicy, StructuredFormatter, TokenAuth
 
 
 def event(**changes: object) -> EventEnvelope:

@@ -9,8 +9,8 @@ from scripts.isolated_postgres import isolated_postgres
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, make_url
 
-from wood_events_service.config import ProducerCredential, Settings
-from wood_events_service.migrate import migrate
+from events_service.config import ProducerCredential, Settings
+from events_service.migrate import migrate
 
 TEST_TOKEN = "unit-test-producer-credential-0123456789"  # noqa: S105 -- test-only
 

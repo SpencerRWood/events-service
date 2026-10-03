@@ -20,18 +20,18 @@ from tests.integration.test_foundation import HEADERS
 from tests.unit.test_contracts_security import event, notification
 from tests.unit.test_notification_providers import WEBHOOK_SECRET
 
-from wood_events_service.config import Settings
-from wood_events_service.contracts import NotificationRequest, ResponseAction
-from wood_events_service.main import create_app
-from wood_events_service.notification_lifecycle import NotificationLifecycle
-from wood_events_service.notification_models import (
+from events_service.config import Settings
+from events_service.contracts import NotificationRequest, ResponseAction
+from events_service.main import create_app
+from events_service.notification_lifecycle import NotificationLifecycle
+from events_service.notification_models import (
     NotificationJob,
 )
-from wood_events_service.notification_policy import NotificationPolicy
-from wood_events_service.providers import ProviderResult, callback_data
-from wood_events_service.retention import cleanup
-from wood_events_service.security import SecretPolicy
-from wood_events_service.storage import (
+from events_service.notification_policy import NotificationPolicy
+from events_service.providers import ProviderResult, callback_data
+from events_service.retention import cleanup
+from events_service.security import SecretPolicy
+from events_service.storage import (
     NotificationRecord,
     NotifyDelivery,
     ResponseRecord,

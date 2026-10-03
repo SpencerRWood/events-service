@@ -13,7 +13,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from wood_events_service.storage import Base
+from events_service.storage import Base
 
 
 class NotificationState(Base):

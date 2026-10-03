@@ -5,7 +5,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from wood_events_service.contracts import (
+from events_service.contracts import (
     EventEnvelope,
     Name,
     NotificationRequest,

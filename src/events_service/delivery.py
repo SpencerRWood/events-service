@@ -14,9 +14,9 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from wood_events_service.config import Settings
-from wood_events_service.contracts import EventEnvelope
-from wood_events_service.storage import BrokerDelivery, BrokerJob, EventRecord
+from events_service.config import Settings
+from events_service.contracts import EventEnvelope
+from events_service.storage import BrokerDelivery, BrokerJob, EventRecord
 
 
 @dataclass(frozen=True)
