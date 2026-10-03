@@ -13,9 +13,10 @@ Readiness checks PostgreSQL connectivity and the required migration revision.
 Both validate configuration and schema at startup; they never create tables
 implicitly. A single container image runs either application by its command.
 
-Routing, webhooks, provider delivery, suppression, response capture and queries
-belong to subsequent R1 Stories. This foundation defines their generic contracts
-and durable tables. It does not execute workflow actions or send notifications.
+The broker routes accepted events to machine consumers through durable webhook
+jobs and exposes delivery history and replay. Human provider delivery, suppression
+and response capture belong to the notification Story. Neither service executes
+workflow actions.
 Dagster and originating services own orchestration. Infrastructure owns production
 deployment, external PostgreSQL, secret injection, promotion and rollback.
 
@@ -30,7 +31,8 @@ The credential variable is a JSON array with entries shaped as:
 [{"source":"producer-name","token":"runtime-injected-token-of-at-least-32-characters","scopes":["events:write"]}]
 ```
 
-Scopes are `events:write` and `notifications:write`. Every credential is bound to
+Scopes are `events:write`, `events:read`, `events:replay` and
+`notifications:write`. Every credential is bound to
 its declared source; a request cannot impersonate another source. Authentication
 uses the replaceable `ServiceAuth` interface and a Bearer header. Tokens must be
 unique. Inject only the credentials required by each independently deployed
@@ -78,7 +80,8 @@ record. A duplicate with the same normalized payload returns the original receip
 ignored in comparison. Accepted data commits before the receipt is returned.
 
 PostgreSQL tables are `broker_events`, `notify_requests`,
-`broker_delivery_attempts`, `notify_delivery_attempts` and `notify_responses`.
+`broker_delivery_jobs`, `broker_delivery_attempts`, `notify_delivery_attempts`
+and `notify_responses`.
 Immutable parent and response records and append-only attempt evidence are guarded
 by database triggers. Child correlation must match its parent. Provider response
 identity is unique. Delivery records store normalized outcome/error codes, not
@@ -99,6 +102,65 @@ the transaction-local deletion exception to the immutable-record trigger; ordina
 updates/deletes fail. PostgreSQL credentials remain privileged infrastructure
 configuration, never producer input. Retention cannot choose a workflow outcome.
 
+## Broker routing, delivery and history
+
+Set `WES_SUBSCRIPTIONS` to an operator-controlled JSON array:
+
+```json
+[{"consumer":"operations","url":"http://consumer:8080/events","event_types":["job.failed"],"sources":["scheduler"],"severities":["error","critical"],"data_equals":{"environment":"dev"}}]
+```
+
+Each consumer has one unique name and URL. Empty predicates match all events;
+nonempty predicates are combined with AND. Values within each type/source/severity
+set are alternatives. `data_equals` compares exact top-level structured data
+values. Multiple matching subscriptions produce independent jobs. Only accepted
+new events are routed; duplicates and later configuration edits do not add jobs
+to existing events. An event with no matches is still durably queryable.
+
+The acceptance transaction commits the immutable event and all its jobs together.
+The broker's lifespan worker resumes pending jobs after restart. PostgreSQL row
+locks with `SKIP LOCKED` prevent concurrent workers from claiming the same job;
+each attempt runs inside its scheduling transaction. URLs remain in runtime
+configuration, and jobs persist consumer names only. A removed consumer records a
+terminal `consumer-unconfigured` failure. Existing pending jobs use the current URL
+for their consumer name, so retain stable consumer identities when changing config.
+
+Webhooks POST the original v1 event JSON with `X-Event-ID`, `X-Correlation-ID` and
+`Idempotency-Key: <event_id>:<consumer>`. Timeout defaults to 5 seconds per HTTP
+phase. Redirects are terminal; response bodies, credentials and exception details
+are never retained. URLs must be HTTP(S) and contain no userinfo, query or fragment.
+Delivery uses no environment proxy or outbound authentication. Configure trusted
+internal consumer URLs; payloads cannot choose destinations.
+
+2xx succeeds; network/timeouts, 408, 425, 429 and 5xx retry. Other statuses fail
+terminally. `WES_WEBHOOK_MAX_ATTEMPTS` defaults to 5 (1–20). Exponential delays
+start at `WES_WEBHOOK_BACKOFF_SECONDS` (1) and cap at
+`WES_WEBHOOK_MAX_BACKOFF_SECONDS` (60). The worker polls at
+`WES_BROKER_POLL_SECONDS` (1). Exhaustion sets the job to terminal failure while
+preserving the final transient attempt classification. Attempts append evidence;
+another consumer's success survives any failure.
+
+Delivery is at-least-once: a crash after a consumer accepts but before the database
+commit can resend the same event. Consumers must durably deduplicate the stable
+idempotency header to avoid duplicate effects. The broker prevents duplicate jobs
+on producer retries; it cannot atomically commit a remote consumer's side effect.
+
+Authenticated, source-restricted endpoints:
+
+- `GET /v1/events?correlation_id=<uuid>&limit=50&offset=0` lists committed events.
+- `GET /v1/events/<event_id>` returns the original event and per-consumer state.
+- `GET /v1/events/<event_id>/attempts?limit=50&offset=0` returns immutable attempts.
+- `POST /v1/events/<event_id>/deliveries/<consumer>/replay` queues another bounded
+  cycle for an existing finished job, preserving IDs and prior evidence.
+
+Reads require `events:read`; replay requires `events:replay`. Events belonging to
+another source return 404. Lists allow 1–100 rows and offset up to 100000. Replay
+returns 202, or 409 if already pending or the consumer is unconfigured. A replay
+increments job generation and resets its cycle count; prior attempts remain.
+Retention preserves events with pending jobs. Finished jobs expire after the
+delivery retention window, after which they are no longer replayable.
+There is no bulk log ingestion endpoint.
+
 ## Local development and verification
 
 ```sh
@@ -112,7 +174,9 @@ Tests start unique disposable PostgreSQL containers and clean them up. Docker is
 required; unavailable dependencies fail clearly rather than silently skipping
 persistence tests. Repository verification migrates a disposable database and runs
 both real service processes, proving authentication, correlation and durable retry
-after restart. It is safe to retry and never uses the production database.
+after restart. It also runs a real broker with two local HTTP consumers, transient
+retry, delivery history and replay across process restart. It is safe to retry
+and never uses the production database.
 
 Local Compose includes PostgreSQL, a one-shot migration container, broker on
 loopback port 8000 and notify on loopback port 8001. Inject scoped credentials and

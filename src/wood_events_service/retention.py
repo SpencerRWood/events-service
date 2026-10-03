@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from wood_events_service.config import Settings
 from wood_events_service.storage import (
     BrokerDelivery,
+    BrokerJob,
     EventRecord,
     NotificationRecord,
     NotifyDelivery,
@@ -22,6 +23,19 @@ def cleanup(engine: Engine, settings: Settings, *, as_of: datetime) -> dict[str,
     removed: dict[str, int] = {}
     with Session(engine) as session, session.begin():
         session.execute(text("SET LOCAL wes.retention = 'on'"))
+        # Pending jobs pin their parent; finished scheduling state expires only
+        # after the delivery retention window, independently of attempt history.
+        removed[BrokerJob.__tablename__] = len(
+            session.scalars(
+                delete(BrokerJob)
+                .where(
+                    BrokerJob.status != "pending",
+                    BrokerJob.updated_at
+                    < as_of - timedelta(days=settings.delivery_retention_days),
+                )
+                .returning(BrokerJob.id)
+            ).all()
+        )
         for model, column, days in (
             (
                 BrokerDelivery,
@@ -49,7 +63,10 @@ def cleanup(engine: Engine, settings: Settings, *, as_of: datetime) -> dict[str,
             (
                 EventRecord,
                 settings.event_retention_days,
-                (exists().where(BrokerDelivery.event_id == EventRecord.id),),
+                (
+                    exists().where(BrokerDelivery.event_id == EventRecord.id),
+                    exists().where(BrokerJob.event_id == EventRecord.id),
+                ),
             ),
             (
                 NotificationRecord,

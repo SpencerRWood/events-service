@@ -6,7 +6,9 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
-Scope = Literal["events:write", "notifications:write"]
+from wood_events_service.routing import Subscription
+
+Scope = Literal["events:write", "events:read", "events:replay", "notifications:write"]
 
 
 class ProducerCredential(BaseModel):
@@ -36,6 +38,12 @@ class Settings(BaseSettings):
     delivery_retention_days: int = Field(default=90, ge=1, le=3650)
     response_retention_days: int = Field(default=90, ge=1, le=3650)
     database_timeout_seconds: int = Field(default=5, ge=1, le=30)
+    subscriptions: list[Subscription] = Field(default_factory=list, max_length=256)
+    webhook_timeout_seconds: float = Field(default=5, gt=0, le=30)
+    webhook_max_attempts: int = Field(default=5, ge=1, le=20)
+    webhook_backoff_seconds: float = Field(default=1, gt=0, le=300)
+    webhook_max_backoff_seconds: float = Field(default=60, gt=0, le=3600)
+    broker_poll_seconds: float = Field(default=1, gt=0, le=60)
 
     @model_validator(mode="after")
     def validate_runtime(self) -> Self:
@@ -47,6 +55,9 @@ class Settings(BaseSettings):
         tokens = [item.token.get_secret_value() for item in self.producer_credentials]
         if len(set(tokens)) != len(tokens):
             raise ValueError("producer tokens must be unique")
+        consumers = [item.consumer for item in self.subscriptions]
+        if len(set(consumers)) != len(consumers):
+            raise ValueError("subscription consumer names must be unique")
         return self
 
     def secret_values(self) -> tuple[str, ...]:
