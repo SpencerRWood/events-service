@@ -6,7 +6,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 
 def migrate(url: str, revision: str = "head", *, downgrade: bool = False) -> None:
@@ -15,6 +15,11 @@ def migrate(url: str, revision: str = "head", *, downgrade: bool = False) -> Non
     engine = create_engine(url, hide_parameters=True)
     try:
         with engine.begin() as connection:
+            # Serialize every migration invocation, including concurrent deployments.
+            # The transaction releases the lock on success or failure; lock waits
+            # are bounded so a stuck deploy does not hold the release indefinitely.
+            connection.execute(text("SET LOCAL lock_timeout = '60s'"))
+            connection.execute(text("SELECT pg_advisory_xact_lock(461, 1)"))
             config.attributes["connection"] = connection
             operation = command.downgrade if downgrade else command.upgrade
             operation(config, revision)

@@ -333,6 +333,10 @@ environment-supplied and the adapter can be replaced independently.
 
 ## Centralized release contract
 
+See [production deployment and acceptance](docs/production-acceptance.md) for the
+Infrastructure topology, Telegram-only acceptance, Dagster workflow example,
+webhook registration helper and required post-promotion verification.
+
 The consumer directly uses `release-container.yml@v3` and `.github/release.toml`.
 Its additive `[runtime]` contract selects `events_service.runtime_check`.
 The shared gate supplies temporary PostgreSQL via `RUNTIME_DATABASE_URL` and runs
@@ -342,7 +346,6 @@ durability across process restarts. Failure or timeout blocks release image tags
 Git tagging and GitHub Release publication. The private candidate tag is built
 before it can be tested. There is no copied promotion wiring in this Story.
 
-The shared workflows extension must be reviewed and published to v3 before the
-consumer is merged. Local validation demonstrates the new contract but does not
-prove that the currently published v3 supports it. CI, release digest and delivered
-runtime evidence are verified separately through Wood Tools after reviewed delivery.
+The published shared v3 contract includes the application runtime gate. CI, release
+digest, promotion and deployed runtime evidence are verified separately through Wood
+Tools after reviewed delivery. Local validation does not attest to a deployed service.

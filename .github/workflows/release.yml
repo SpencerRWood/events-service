@@ -10,3 +10,21 @@ jobs:
     permissions:
       contents: write
       packages: write
+
+  promote-dev:
+    needs: release
+    if: needs.release.outputs.released == 'true' && vars.EVENTS_SERVICE_PROMOTION_ENABLED == 'true'
+    uses: SpencerRWood/workflows/.github/workflows/promote-container-to-dev.yml@v3
+    permissions:
+      contents: read
+    with:
+      infrastructure_repository: SpencerRWood/infrastructure
+      image_key: events_service_image_ref
+      image_name: events-service
+      release_tag: ${{ needs.release.outputs.release_tag }}
+      image_repository: ${{ needs.release.outputs.image_repository }}
+      version_image: ${{ needs.release.outputs.version_image }}
+      image_digest: ${{ needs.release.outputs.image_digest }}
+      version_image_digest: ${{ needs.release.outputs.version_image_digest }}
+    secrets:
+      infrastructure_token: ${{ secrets.INFRASTRUCTURE_PROMOTION_TOKEN }}

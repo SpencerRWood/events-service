@@ -42,6 +42,7 @@ dev = [
   "ruff",
   "pyyaml>=6.0.3",
   "types-pyyaml>=6.0.12.20260906",
+  "dagster>=1.13.16,<2",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -63,6 +64,12 @@ retry_safe = true
 [[tool.wood.verify.checks]]
 name = "postgres-foundation"
 argv = ["uv", "run", "python", "scripts/verify_foundation.py"]
+timeout_seconds = 60
+required = true
+
+[[tool.wood.verify.checks]]
+name = "deployed-runtime"
+argv = ["uv", "run", "python", "-m", "scripts.verify_deployment"]
 timeout_seconds = 60
 required = true
 
@@ -129,6 +136,8 @@ ignore = [
 ]
 "scripts/isolated_postgres.py" = ["S603", "S607"]
 "scripts/verify_foundation.py" = ["T201"]
+"scripts/verify_deployment.py" = ["T201"]
+"scripts/telegram_webhook.py" = ["T201"]
 "src/events_service/runtime_check.py" = ["T201"]
 
 [tool.ruff.format]
