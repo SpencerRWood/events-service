@@ -2,7 +2,7 @@
 
 import httpx
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 from tests.unit.test_contracts_security import event
 
 from wood_events_service.config import Settings
@@ -116,3 +116,25 @@ def test_webhook_network_failures_are_safe(
     )
     assert result.outcome == "transient-failure"
     assert result.error_code == code
+
+
+def test_runtime_relay_authentication_is_not_persisted(settings: Settings) -> None:
+    token = "test-notify-relay-credential-0123456789"  # noqa: S105
+    subscription = Subscription(
+        consumer="notify",
+        url="http://notify/v1/broker-events",
+        auth_token=SecretStr(token),
+    )
+    assert token not in repr(subscription)
+    assert token not in subscription.model_dump_json()
+    configured = settings.model_copy(update={"subscriptions": [subscription]})
+    assert token in configured.secret_values()
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert request.headers["Authorization"] == f"Bearer {token}"
+        return httpx.Response(201)
+
+    result = HttpWebhook(
+        1, httpx.MockTransport(handle), credentials={"notify": SecretStr(token)}
+    ).send(subscription.url, event(), "notify")
+    assert result.outcome == "delivered"

@@ -8,6 +8,7 @@ from typing import Protocol
 from uuid import UUID, uuid4
 
 import httpx
+from pydantic import SecretStr
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -29,11 +30,26 @@ class Webhook(Protocol):
 
 
 class HttpWebhook:
-    def __init__(self, timeout: float, transport: httpx.BaseTransport | None = None):
+    def __init__(
+        self,
+        timeout: float,
+        transport: httpx.BaseTransport | None = None,
+        credentials: dict[str, SecretStr] | None = None,
+    ):
         self.timeout = timeout
         self.transport = transport
+        self.credentials = credentials or {}
 
     def send(self, url: str, event: EventEnvelope, consumer: str) -> DeliveryResult:
+        headers = {
+            "Idempotency-Key": f"{event.event_id}:{consumer}",
+            "X-Event-ID": str(event.event_id),
+            "X-Correlation-ID": str(event.correlation_id),
+        }
+        if consumer in self.credentials:
+            headers["Authorization"] = (
+                f"Bearer {self.credentials[consumer].get_secret_value()}"
+            )
         try:
             # Never follow redirects or read/store an unbounded consumer response.
             with (
@@ -47,11 +63,7 @@ class HttpWebhook:
                     "POST",
                     url,
                     json=event.model_dump(mode="json"),
-                    headers={
-                        "Idempotency-Key": f"{event.event_id}:{consumer}",
-                        "X-Event-ID": str(event.event_id),
-                        "X-Correlation-ID": str(event.correlation_id),
-                    },
+                    headers=headers,
                 ) as response,
             ):
                 status = response.status_code

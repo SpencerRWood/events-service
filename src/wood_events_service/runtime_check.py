@@ -17,6 +17,7 @@ from sqlalchemy import create_engine, text
 
 from wood_events_service.broker_runtime import verify_broker
 from wood_events_service.migrate import migrate
+from wood_events_service.notification_runtime import verify_notifications
 
 
 @contextmanager
@@ -84,12 +85,19 @@ def verify(url: str) -> None:
                     "events:read",
                     "events:replay",
                     "notifications:write",
+                    "notifications:read",
+                    "notifications:retry",
+                    "notifications:consume",
                 ],
             }
         ]
     )
     environment = {
-        **os.environ,
+        **{
+            key: value
+            for key, value in os.environ.items()
+            if not key.startswith(("WES_", "NTFY_", "TELEGRAM_", "SMTP_"))
+        },
         "WES_DATABASE_URL": url,
         "WES_PRODUCER_CREDENTIALS": credentials,
         "WES_SUBSCRIPTIONS": "[]",
@@ -166,6 +174,7 @@ def verify(url: str) -> None:
     finally:
         engine.dispose()
     verify_broker(url, environment, token)
+    verify_notifications(environment, token)
 
 
 def main() -> None:
@@ -187,6 +196,8 @@ def main() -> None:
                     "credential-exclusion",
                     "broker-routing-webhooks",
                     "broker-retry-replay-history",
+                    "notify-policy-providers-retry",
+                    "notify-callback-replay-restart",
                 ],
             }
         )

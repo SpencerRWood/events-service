@@ -4,7 +4,7 @@ from typing import Annotated, Protocol, Self
 from urllib.parse import urlsplit
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, SecretStr, model_validator
 
 from wood_events_service.contracts import EventEnvelope, Name, Severity
 
@@ -15,6 +15,7 @@ class Subscription(BaseModel):
         str, Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.-]+$")
     ]
     url: str
+    auth_token: SecretStr | None = Field(default=None, repr=False, exclude=True)
     event_types: set[Name] = Field(default_factory=set)
     sources: set[Name] = Field(default_factory=set)
     severities: set[Severity] = Field(default_factory=set)
