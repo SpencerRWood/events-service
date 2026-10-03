@@ -64,6 +64,26 @@ register a Telegram webhook or promote a release. Other environments require the
 own operator-verified mapping. Production instances should receive only their own
 scoped credentials and provider secrets.
 
+Development persistence uses Infrastructure's `events_service` database and
+dedicated `events_service` role at the restricted LAN endpoint
+`192.168.1.21:25433`. Infrastructure's Ansible PostgreSQL role owns provisioning
+and database isolation. The role can migrate and access its own schema; it
+cannot create roles or databases or connect to other databases. The canonical
+credential remains `WES_DATABASE_URL` in `dev /events-service`; do not create
+separate application password, username, or hostname secrets.
+
+The initial `dev /events-service` credentials give `infrastructure`, `homelab`,
+`rag-service`, `openproject-reports`, `wood-reports` and `workflows` exactly
+`events:write`. The independent `wood-notify` relay has exactly
+`notifications:consume`. All seven tokens are unique and at least 48 characters.
+The secret `WES_SUBSCRIPTIONS` value contains one broad `wood-notify` subscription
+to `http://wood-notify:8000/v1/broker-events`, with the same relay token. Local
+Compose provides the `wood-notify` network alias; infrastructure must provide that
+internal name when deploying the services. No Events production topology is
+defined yet. Keep both JSON values entirely in Infisical, including the subscription
+authentication token. Database and provider configuration must come from their
+infrastructure or provider owners before enabling the corresponding runtime.
+
 | Name | Value and purpose |
 | --- | --- |
 | `WES_DATABASE_URL` | Secret PostgreSQL connection URL using `postgresql+psycopg`. |
@@ -313,6 +333,10 @@ environment-supplied and the adapter can be replaced independently.
 
 ## Centralized release contract
 
+See [production deployment and acceptance](docs/production-acceptance.md) for the
+Infrastructure topology, Telegram-only acceptance, Dagster workflow example,
+webhook registration helper and required post-promotion verification.
+
 The consumer directly uses `release-container.yml@v3` and `.github/release.toml`.
 Its additive `[runtime]` contract selects `events_service.runtime_check`.
 The shared gate supplies temporary PostgreSQL via `RUNTIME_DATABASE_URL` and runs
@@ -322,7 +346,6 @@ durability across process restarts. Failure or timeout blocks release image tags
 Git tagging and GitHub Release publication. The private candidate tag is built
 before it can be tested. There is no copied promotion wiring in this Story.
 
-The shared workflows extension must be reviewed and published to v3 before the
-consumer is merged. Local validation demonstrates the new contract but does not
-prove that the currently published v3 supports it. CI, release digest and delivered
-runtime evidence are verified separately through Wood Tools after reviewed delivery.
+The published shared v3 contract includes the application runtime gate. CI, release
+digest, promotion and deployed runtime evidence are verified separately through Wood
+Tools after reviewed delivery. Local validation does not attest to a deployed service.

@@ -35,12 +35,14 @@ def wait_channels(
     raise RuntimeError("Notification channels did not deliver")
 
 
-def verify_notifications(environment: dict[str, str], token: str) -> None:
+def verify_notifications(
+    environment: dict[str, str], token: str, *, telegram_only: bool = False
+) -> None:
     from events_service.runtime_check import require, running  # noqa: PLC0415
 
     received: list[tuple[str, dict[str, object]]] = []
     bot_token, webhook_secret = secrets.token_hex(32), secrets.token_hex(32)
-    chat_id = -123
+    chat_id = -(uuid4().int % (2**40))
 
     class Consumer(BaseHTTPRequestHandler):
         def do_POST(self) -> None:
@@ -69,10 +71,19 @@ def verify_notifications(environment: dict[str, str], token: str) -> None:
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     configured = {
-        **environment,
-        "NTFY_BASE_URL": f"http://127.0.0.1:{server.server_port}",
-        "NTFY_TOPIC": "runtime-check",
-        "NTFY_AUTH_TOKEN": "",
+        **{
+            key: value
+            for key, value in environment.items()
+            if not key.startswith(("NTFY_", "SMTP_"))
+        },
+        **(
+            {}
+            if telegram_only
+            else {
+                "NTFY_BASE_URL": f"http://127.0.0.1:{server.server_port}",
+                "NTFY_TOPIC": "runtime-check",
+            }
+        ),
         "TELEGRAM_API_BASE_URL": f"http://127.0.0.1:{server.server_port}",
         "TELEGRAM_BOT_TOKEN": bot_token,
         "TELEGRAM_CHAT_ID": str(chat_id),
@@ -82,7 +93,7 @@ def verify_notifications(environment: dict[str, str], token: str) -> None:
             [
                 {
                     "name": "broker",
-                    "channels": ["ntfy", "telegram"],
+                    "channels": ["telegram"] if telegram_only else ["ntfy", "telegram"],
                     "event_types": ["runtime.notify"],
                 },
                 {
@@ -159,7 +170,7 @@ def verify_notifications(environment: dict[str, str], token: str) -> None:
                         f"/v1/notifications/{derived_id}/attempts", headers=headers
                     ).json()
                 )
-                == 3,
+                == (1 if telegram_only else 3),
                 "Notify retry evidence missing",
             )
             require(
@@ -180,7 +191,7 @@ def verify_notifications(environment: dict[str, str], token: str) -> None:
             callback = {
                 "update_id": 1,
                 "callback_query": {
-                    "id": "runtime-callback",
+                    "id": "runtime-callback-" + request_id,
                     "from": {"id": 42},
                     "message": {"message_id": message_id, "chat": {"id": chat_id}},
                     "data": callback_data(UUID(request_id), 0, webhook_secret),

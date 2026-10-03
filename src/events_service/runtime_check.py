@@ -175,6 +175,7 @@ def verify(url: str) -> None:
         engine.dispose()
     verify_broker(url, environment, token)
     verify_notifications(environment, token)
+    verify_notifications(environment, token, telegram_only=True)
 
 
 def main() -> None:
@@ -198,6 +199,7 @@ def main() -> None:
                     "broker-retry-replay-history",
                     "notify-policy-providers-retry",
                     "notify-callback-replay-restart",
+                    "telegram-only-without-optional-provider-settings",
                 ],
             }
         )
