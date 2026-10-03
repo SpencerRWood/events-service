@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v0.4.0 (2026-10-03)
+
+### Features
+
+- Configure Events Service dev persistence and notification routing
+  ([#8](https://github.com/SpencerRWood/events-service/pull/8),
+  [`f455191`](https://github.com/SpencerRWood/events-service/commit/f4551911e76c14dfc74b2ccc35aafb2e05a0e4db))
+
+- Rename Events Service and configure its dev runtime
+  ([#8](https://github.com/SpencerRWood/events-service/pull/8),
+  [`f455191`](https://github.com/SpencerRWood/events-service/commit/f4551911e76c14dfc74b2ccc35aafb2e05a0e4db))
+
+
 ## v0.3.0 (2026-10-03)
 
 ### Features
