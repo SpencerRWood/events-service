@@ -74,7 +74,7 @@ separate application password, username, or hostname secrets.
 
 The initial `dev /events-service` credentials give `infrastructure`, `homelab`,
 `rag-service`, `openproject-reports`, `wood-reports` and `workflows` exactly
-`events:write`. The independent `wood-notify` relay has exactly
+`events:write` and `notifications:write`. The independent `wood-notify` relay has exactly
 `notifications:consume`. All seven tokens are unique and at least 48 characters.
 The secret `WES_SUBSCRIPTIONS` value contains one broad `wood-notify` subscription
 to `http://wood-notify:8000/v1/broker-events`, with the same relay token. Local
