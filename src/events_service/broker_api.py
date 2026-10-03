@@ -6,10 +6,10 @@ from uuid import UUID
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from wood_events_service.config import Scope
-from wood_events_service.delivery import BrokerWorker
-from wood_events_service.history import BrokerHistory
-from wood_events_service.security import ServiceAuth
+from events_service.config import Scope
+from events_service.delivery import BrokerWorker
+from events_service.history import BrokerHistory
+from events_service.security import ServiceAuth
 
 Limit = Annotated[int, Query(ge=1, le=100)]
 Offset = Annotated[int, Query(ge=0, le=100000)]

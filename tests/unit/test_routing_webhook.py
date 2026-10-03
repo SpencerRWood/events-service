@@ -5,9 +5,9 @@ import pytest
 from pydantic import SecretStr, ValidationError
 from tests.unit.test_contracts_security import event
 
-from wood_events_service.config import Settings
-from wood_events_service.delivery import HttpWebhook
-from wood_events_service.routing import Subscription, SubscriptionRouter
+from events_service.config import Settings
+from events_service.delivery import HttpWebhook
+from events_service.routing import Subscription, SubscriptionRouter
 
 
 @pytest.mark.parametrize(

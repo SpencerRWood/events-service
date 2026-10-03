@@ -2,7 +2,7 @@
 
 from isolated_postgres import isolated_postgres
 
-from wood_events_service.runtime_check import verify
+from events_service.runtime_check import verify
 
 if __name__ == "__main__":
     with isolated_postgres() as database:

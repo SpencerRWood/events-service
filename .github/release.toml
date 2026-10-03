@@ -7,18 +7,18 @@ version = "3.14"
 checks = ["ruff", "ruff-format", "mypy", "pytest", "pytest-coverage", "docker-compose", "pre-commit"]
 
 [coverage]
-target = "wood_events_service"
+target = "events_service"
 
 [build]
 python_package = true
 
 [container]
 publish = true
-image_name = "wood-events-service"
+image_name = "events-service"
 
 [runtime]
 validation = true
-check_module = "wood_events_service.runtime_check"
+check_module = "events_service.runtime_check"
 timeout_seconds = 120
 
 [release]

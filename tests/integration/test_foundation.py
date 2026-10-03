@@ -16,13 +16,13 @@ from sqlalchemy.orm import Session
 from tests.conftest import TEST_TOKEN
 from tests.unit.test_contracts_security import event, notification
 
-from wood_events_service.config import Settings
-from wood_events_service.main import create_app
-from wood_events_service.migrate import migrate
-from wood_events_service.retention import cleanup
-from wood_events_service.runtime_check import verify
-from wood_events_service.security import SecretPolicy
-from wood_events_service.storage import (
+from events_service.config import Settings
+from events_service.main import create_app
+from events_service.migrate import migrate
+from events_service.retention import cleanup
+from events_service.runtime_check import verify
+from events_service.security import SecretPolicy
+from events_service.storage import (
     Base,
     BrokerDelivery,
     EventRecord,
@@ -331,7 +331,7 @@ def test_startup_validates_settings_and_database(
         assert client.get("/health/ready").status_code == 200
     active = make_engine(settings)
     try:
-        with patch("wood_events_service.storage.Engine.connect") as connect:
+        with patch("events_service.storage.Engine.connect") as connect:
             connect.return_value.__enter__.return_value.scalar.return_value = "old"
             with pytest.raises(SQLAlchemyError, match="migration"):
                 check_schema(active)
@@ -354,13 +354,13 @@ def test_database_failures_have_safe_http_and_startup_errors(
         assert failure.status_code == 503
         assert TEST_TOKEN not in failure.text
         with patch(
-            "wood_events_service.main.check_schema",
+            "events_service.main.check_schema",
             side_effect=SQLAlchemyError(TEST_TOKEN),
         ):
             assert client.get("/health/ready").status_code == 503
     with (
         patch(
-            "wood_events_service.main.check_schema",
+            "events_service.main.check_schema",
             side_effect=SQLAlchemyError(TEST_TOKEN),
         ),
         pytest.raises(RuntimeError, match="Database unavailable") as startup,

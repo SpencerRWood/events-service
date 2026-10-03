@@ -15,7 +15,7 @@ services:
   migrate:
     build:
       context: .
-    command: ["python", "-m", "wood_events_service.migrate"]
+    command: ["python", "-m", "events_service.migrate"]
     environment:
       WES_DATABASE_URL: postgresql+psycopg://wes_dev:${WES_LOCAL_POSTGRES_PASSWORD:-local-development-only}@postgres/wes_dev
     depends_on:
@@ -37,7 +37,11 @@ services:
   notify:
     build:
       context: .
-    command: ["uvicorn", "wood_events_service.notify:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+    networks:
+      default:
+        aliases:
+          - wood-notify
+    command: ["uvicorn", "events_service.notify:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
     ports:
       - "127.0.0.1:8001:8000"
     environment:

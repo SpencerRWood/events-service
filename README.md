@@ -1,4 +1,4 @@
-# Wood Events Service
+# Events Service
 
 R1 foundation for internal event and human interaction transport. This repository
 contains two independently runnable FastAPI applications and shared typed v1
@@ -50,11 +50,11 @@ Tools' existing Infisical context and are not application secrets.
 The checked-in `.infisical.json` selects project
 `7ea10433-2eeb-4c57-95a9-b793dd40c7a4` on
 `https://dev-infisical.woodhost.cloud`. The verified development folder is
-`/wood-events-service`. Populate values in environment `dev`; the example file
+`/events-service`. Populate values in environment `dev`; the example file
 contains names only. Optional empty provider variables are ignored. Launch with:
 
 ```sh
-infisical run --env=dev --path=/wood-events-service -- uv run python -m wood_events_service.migrate
+infisical run --env=dev --path=/events-service -- uv run python -m events_service.migrate
 bash scripts/run_service.sh dev notify
 bash scripts/run_service.sh dev broker
 ```
@@ -63,6 +63,26 @@ This local launcher injects secrets; it does not create production topology,
 register a Telegram webhook or promote a release. Other environments require their
 own operator-verified mapping. Production instances should receive only their own
 scoped credentials and provider secrets.
+
+Development persistence uses Infrastructure's `events_service` database and
+dedicated `events_service` role at the restricted LAN endpoint
+`192.168.1.21:25433`. Infrastructure's Ansible PostgreSQL role owns provisioning
+and database isolation. The role can migrate and access its own schema; it
+cannot create roles or databases or connect to other databases. The canonical
+credential remains `WES_DATABASE_URL` in `dev /events-service`; do not create
+separate application password, username, or hostname secrets.
+
+The initial `dev /events-service` credentials give `infrastructure`, `homelab`,
+`rag-service`, `openproject-reports`, `wood-reports` and `workflows` exactly
+`events:write` and `notifications:write`. The independent `wood-notify` relay has exactly
+`notifications:consume`. All seven tokens are unique and at least 48 characters.
+The secret `WES_SUBSCRIPTIONS` value contains one broad `wood-notify` subscription
+to `http://wood-notify:8000/v1/broker-events`, with the same relay token. Local
+Compose provides the `wood-notify` network alias; infrastructure must provide that
+internal name when deploying the services. No Events production topology is
+defined yet. Keep both JSON values entirely in Infisical, including the subscription
+authentication token. Database and provider configuration must come from their
+infrastructure or provider owners before enabling the corresponding runtime.
 
 | Name | Value and purpose |
 | --- | --- |
@@ -95,7 +115,7 @@ classifier can establish that arbitrary text is safe to store.
 
 ## v1 contracts and persistence
 
-See `src/wood_events_service/contracts.py` and each application's `/openapi.json`.
+See `src/events_service/contracts.py` and each application's `/openapi.json`.
 Events require type, source, severity, timezone-aware occurrence time,
 correlation ID and structured data. Notifications require title, message,
 notification type, correlation ID and requested channels or a policy key.
@@ -122,9 +142,9 @@ provider configuration or credential-bearing responses.
 Run migrations separately before starting either application:
 
 ```sh
-uv run python -m wood_events_service.migrate
-uv run uvicorn wood_events_service.broker:app --host 127.0.0.1 --port 8000 --no-access-log
-uv run uvicorn wood_events_service.notify:app --host 127.0.0.1 --port 8001 --no-access-log
+uv run python -m events_service.migrate
+uv run uvicorn events_service.broker:app --host 127.0.0.1 --port 8000 --no-access-log
+uv run uvicorn events_service.notify:app --host 127.0.0.1 --port 8001 --no-access-log
 ```
 
 `retention.cleanup(engine, settings, as_of=<aware datetime>)` provides deterministic
@@ -314,7 +334,7 @@ environment-supplied and the adapter can be replaced independently.
 ## Centralized release contract
 
 The consumer directly uses `release-container.yml@v3` and `.github/release.toml`.
-Its additive `[runtime]` contract selects `wood_events_service.runtime_check`.
+Its additive `[runtime]` contract selects `events_service.runtime_check`.
 The shared gate supplies temporary PostgreSQL via `RUNTIME_DATABASE_URL` and runs
 this module in the exact verified candidate digest. The module proves migrations,
 both startup paths, authenticated acceptance, correlation, credential exclusion and

@@ -10,13 +10,13 @@ import pytest
 from pydantic import SecretStr, ValidationError
 from tests.unit.test_contracts_security import event, notification
 
-from wood_events_service.config import Settings
-from wood_events_service.contracts import ResponseAction, Severity
-from wood_events_service.notification_policy import (
+from events_service.config import Settings
+from events_service.contracts import ResponseAction, Severity
+from events_service.notification_policy import (
     NotificationPolicy,
     NotificationRouter,
 )
-from wood_events_service.providers import (
+from events_service.providers import (
     HttpProvider,
     NtfyProvider,
     SmtpProvider,
@@ -26,7 +26,7 @@ from wood_events_service.providers import (
     parse_callback,
     provider_registry,
 )
-from wood_events_service.security import SecretPolicy
+from events_service.security import SecretPolicy
 
 BOT_TOKEN = "test-bot-token-not-a-real-provider-token"  # noqa: S105
 WEBHOOK_SECRET = "test-webhook-secret-01234567890123456789"  # noqa: S105
@@ -249,10 +249,8 @@ def test_smtp_uses_tls_credentials_and_stable_message_id(
     client = connection.__enter__.return_value
     client.send_message.return_value = {}
     with (
-        patch("wood_events_service.providers.smtplib.SMTP", return_value=connection),
-        patch(
-            "wood_events_service.providers.smtplib.SMTP_SSL", return_value=connection
-        ),
+        patch("events_service.providers.smtplib.SMTP", return_value=connection),
+        patch("events_service.providers.smtplib.SMTP_SSL", return_value=connection),
     ):
         assert SmtpProvider(configured).send(original).outcome == "delivered"
     assert client.starttls.call_count == (1 if tls == "starttls" else 0)
@@ -288,7 +286,7 @@ def test_smtp_uses_tls_credentials_and_stable_message_id(
 def test_smtp_errors_are_normalized(
     provider_settings: Settings, error: Exception, outcome: str, code: str
 ) -> None:
-    with patch("wood_events_service.providers.smtplib.SMTP", side_effect=error):
+    with patch("events_service.providers.smtplib.SMTP", side_effect=error):
         result = SmtpProvider(provider_settings).send(notification())
     assert result.outcome == outcome
     assert result.error_code == code
@@ -301,7 +299,7 @@ def test_smtp_partial_failure_does_not_retry_successful_recipients(
     connection.__enter__.return_value.send_message.return_value = {
         "failed": (550, b"secret")
     }
-    with patch("wood_events_service.providers.smtplib.SMTP", return_value=connection):
+    with patch("events_service.providers.smtplib.SMTP", return_value=connection):
         assert (
             SmtpProvider(provider_settings).send(notification()).error_code
             == "partial-recipient-failure"

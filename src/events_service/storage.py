@@ -19,10 +19,10 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
-from wood_events_service.config import Settings
-from wood_events_service.contracts import EventEnvelope, NotificationRequest, Receipt
-from wood_events_service.routing import Router
-from wood_events_service.security import SecretPolicy
+from events_service.config import Settings
+from events_service.contracts import EventEnvelope, NotificationRequest, Receipt
+from events_service.routing import Router
+from events_service.security import SecretPolicy
 
 
 class Base(DeclarativeBase):

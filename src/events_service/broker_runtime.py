@@ -27,7 +27,7 @@ def wait_delivered(
 
 def verify_broker(url: str, environment: dict[str, str], token: str) -> None:
     # Imported here to reuse the existing subprocess lifecycle without a cycle.
-    from wood_events_service.runtime_check import require, running  # noqa: PLC0415
+    from events_service.runtime_check import require, running  # noqa: PLC0415
 
     engine = create_engine(url, hide_parameters=True)
     received: list[tuple[str, str, dict[str, object]]] = []

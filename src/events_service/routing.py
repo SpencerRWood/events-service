@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, SecretStr, model_validator
 
-from wood_events_service.contracts import EventEnvelope, Name, Severity
+from events_service.contracts import EventEnvelope, Name, Severity
 
 
 class Subscription(BaseModel):

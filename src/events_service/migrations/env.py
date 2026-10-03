@@ -2,8 +2,8 @@
 
 from alembic import context
 
-import wood_events_service.notification_models  # noqa: F401 -- register metadata
-from wood_events_service.storage import Base
+import events_service.notification_models  # noqa: F401 -- register metadata
+from events_service.storage import Base
 
 context.configure(
     connection=context.config.attributes["connection"], target_metadata=Base.metadata

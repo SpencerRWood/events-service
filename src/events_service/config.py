@@ -8,8 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
-from wood_events_service.notification_policy import NotificationPolicy
-from wood_events_service.routing import Subscription
+from events_service.notification_policy import NotificationPolicy
+from events_service.routing import Subscription
 
 Scope = Literal[
     "events:write",

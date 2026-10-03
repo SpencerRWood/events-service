@@ -12,8 +12,8 @@ from uuid import UUID
 
 import httpx
 
-from wood_events_service.config import Settings
-from wood_events_service.contracts import NotificationRequest
+from events_service.config import Settings
+from events_service.contracts import NotificationRequest
 
 
 @dataclass(frozen=True)

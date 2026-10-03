@@ -15,9 +15,9 @@ from uuid import uuid4
 import httpx
 from sqlalchemy import create_engine, text
 
-from wood_events_service.broker_runtime import verify_broker
-from wood_events_service.migrate import migrate
-from wood_events_service.notification_runtime import verify_notifications
+from events_service.broker_runtime import verify_broker
+from events_service.migrate import migrate
+from events_service.notification_runtime import verify_notifications
 
 
 @contextmanager
@@ -30,7 +30,7 @@ def running(service: str, environment: dict[str, str]) -> Iterator[httpx.Client]
             sys.executable,
             "-m",
             "uvicorn",
-            f"wood_events_service.{service}:app",
+            f"events_service.{service}:app",
             "--host",
             "127.0.0.1",
             "--port",

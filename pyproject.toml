@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "wood-events-service"
+name = "events-service"
 version = "0.3.0"
 description = "Internal event and human interaction transport foundation."
 readme = "README.md"
@@ -45,7 +45,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/wood_events_service"]
+packages = ["src/events_service"]
 
 [tool.wood.openproject]
 project_id = 3
@@ -84,7 +84,7 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 branch = true
-source = ["wood_events_service"]
+source = ["events_service"]
 
 [tool.coverage.report]
 fail_under = 90
@@ -129,7 +129,7 @@ ignore = [
 ]
 "scripts/isolated_postgres.py" = ["S603", "S607"]
 "scripts/verify_foundation.py" = ["T201"]
-"src/wood_events_service/runtime_check.py" = ["T201"]
+"src/events_service/runtime_check.py" = ["T201"]
 
 [tool.ruff.format]
 quote-style = "double"
