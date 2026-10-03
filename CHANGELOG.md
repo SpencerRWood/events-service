@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v0.5.0 (2026-10-03)
+
+### Features
+
+- Add deployment and end-to-end acceptance contracts
+  ([#9](https://github.com/SpencerRWood/events-service/pull/9),
+  [`3d1ae66`](https://github.com/SpencerRWood/events-service/commit/3d1ae66c905bad428b1cc53839345c10c10c077f))
+
+
 ## v0.4.0 (2026-10-03)
 
 ### Features
