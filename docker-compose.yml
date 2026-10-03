@@ -37,6 +37,10 @@ services:
   notify:
     build:
       context: .
+    networks:
+      default:
+        aliases:
+          - wood-notify
     command: ["uvicorn", "events_service.notify:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
     ports:
       - "127.0.0.1:8001:8000"

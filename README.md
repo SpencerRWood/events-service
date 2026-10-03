@@ -64,6 +64,26 @@ register a Telegram webhook or promote a release. Other environments require the
 own operator-verified mapping. Production instances should receive only their own
 scoped credentials and provider secrets.
 
+Development persistence uses Infrastructure's `events_service` database and
+dedicated `events_service` role at the restricted LAN endpoint
+`192.168.1.21:25433`. Infrastructure's Ansible PostgreSQL role owns provisioning
+and database isolation. The role can migrate and access its own schema; it
+cannot create roles or databases or connect to other databases. The canonical
+credential remains `WES_DATABASE_URL` in `dev /events-service`; do not create
+separate application password, username, or hostname secrets.
+
+The initial `dev /events-service` credentials give `infrastructure`, `homelab`,
+`rag-service`, `openproject-reports`, `wood-reports` and `workflows` exactly
+`events:write` and `notifications:write`. The independent `wood-notify` relay has exactly
+`notifications:consume`. All seven tokens are unique and at least 48 characters.
+The secret `WES_SUBSCRIPTIONS` value contains one broad `wood-notify` subscription
+to `http://wood-notify:8000/v1/broker-events`, with the same relay token. Local
+Compose provides the `wood-notify` network alias; infrastructure must provide that
+internal name when deploying the services. No Events production topology is
+defined yet. Keep both JSON values entirely in Infisical, including the subscription
+authentication token. Database and provider configuration must come from their
+infrastructure or provider owners before enabling the corresponding runtime.
+
 | Name | Value and purpose |
 | --- | --- |
 | `WES_DATABASE_URL` | Secret PostgreSQL connection URL using `postgresql+psycopg`. |
