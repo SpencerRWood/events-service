@@ -29,6 +29,8 @@ services:
     environment: &runtime
       WES_DATABASE_URL: postgresql+psycopg://wes_dev:${WES_LOCAL_POSTGRES_PASSWORD:-local-development-only}@postgres/wes_dev
       WES_PRODUCER_CREDENTIALS: ${WES_PRODUCER_CREDENTIALS:-[]}
+    # A runtime-injected JSON value may contain scoped relay credentials.
+      WES_SUBSCRIPTIONS: ${WES_SUBSCRIPTIONS:-[]}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -38,9 +40,36 @@ services:
     command: ["uvicorn", "wood_events_service.notify:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
     ports:
       - "127.0.0.1:8001:8000"
-    environment: *runtime
+    environment:
+      <<: *runtime
+      WES_NOTIFICATION_POLICIES: ${WES_NOTIFICATION_POLICIES:-[]}
+      WES_SUPPRESSION_SECONDS: ${WES_SUPPRESSION_SECONDS:-60}
+      NTFY_BASE_URL: ${NTFY_BASE_URL:-}
+      NTFY_TOPIC: ${NTFY_TOPIC:-}
+      NTFY_AUTH_TOKEN: ${NTFY_AUTH_TOKEN:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      TELEGRAM_ALLOWED_USER_IDS: ${TELEGRAM_ALLOWED_USER_IDS:-[]}
+      TELEGRAM_API_BASE_URL: ${TELEGRAM_API_BASE_URL:-https://api.telegram.org}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_SENDER: ${SMTP_SENDER:-}
+      SMTP_RECIPIENTS: ${SMTP_RECIPIENTS:-[]}
+      SMTP_TLS: ${SMTP_TLS:-starttls}
     depends_on:
       migrate:
         condition: service_completed_successfully
+  ntfy:
+    image: binwiederhier/ntfy:v2
+    profiles: ["notifications"]
+    command: ["serve"]
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - ntfy-cache:/var/cache/ntfy
 volumes:
   postgres-data:
+  ntfy-cache:

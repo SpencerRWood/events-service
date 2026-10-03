@@ -1,5 +1,6 @@
 """Durable transport records and concurrency-safe producer idempotency."""
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -134,17 +135,23 @@ def check_schema(engine: Engine) -> None:
     """Readiness requires connectivity and the exact foundation migration."""
     with engine.connect() as connection:
         revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        if revision != "0002_broker_lifecycle":
+        if revision != "0003_notify_lifecycle":
             raise SQLAlchemyError("Database migration required")
 
 
 class Store:
     def __init__(
-        self, engine: Engine, secrets: SecretPolicy, router: Router | None = None
+        self,
+        engine: Engine,
+        secrets: SecretPolicy,
+        router: Router | None = None,
+        notification_hook: Callable[[Session, NotificationRequest, datetime], None]
+        | None = None,
     ) -> None:
         self.engine = engine
         self.secrets = secrets
         self.router = router
+        self.notification_hook = notification_hook
 
     def accept(self, envelope: EventEnvelope | NotificationRequest) -> Receipt:
         payload = envelope.model_dump(mode="json")
@@ -201,6 +208,12 @@ class Store:
                     raise IdempotencyConflictError
             if stored is None:
                 raise IdempotencyConflictError
+            if (
+                inserted is not None
+                and isinstance(envelope, NotificationRequest)
+                and self.notification_hook
+            ):
+                self.notification_hook(session, envelope, stored.accepted_at)
             if inserted is not None and isinstance(envelope, EventEnvelope):
                 session.add_all(
                     BrokerJob(

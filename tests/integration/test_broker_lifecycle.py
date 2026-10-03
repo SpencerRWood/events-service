@@ -1,7 +1,6 @@
 """Durable scheduling, retries, crash recovery, replay and source-isolated history."""
 
 import asyncio
-from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from threading import Event
@@ -10,8 +9,8 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, func, select, text
-from sqlalchemy.engine import Engine, make_url
+from sqlalchemy import func, select
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from tests.integration.test_foundation import HEADERS
@@ -22,31 +21,10 @@ from wood_events_service.contracts import EventEnvelope
 from wood_events_service.delivery import BrokerWorker, DeliveryResult
 from wood_events_service.history import BrokerHistory
 from wood_events_service.main import create_app
-from wood_events_service.migrate import migrate
 from wood_events_service.retention import cleanup
 from wood_events_service.routing import Subscription, SubscriptionRouter
 from wood_events_service.security import SecretPolicy
 from wood_events_service.storage import BrokerJob, EventRecord, Store
-
-
-@pytest.fixture
-def broker_engine(engine: Engine, database_url: str) -> Iterator[Engine]:
-    schema = "broker_" + uuid4().hex
-    with engine.begin() as connection:
-        connection.execute(text(f"CREATE SCHEMA {schema}"))
-    url = (
-        make_url(database_url)
-        .update_query_dict({"options": f"-c search_path={schema}"})
-        .render_as_string(hide_password=False)
-    )
-    migrate(url)
-    active = create_engine(url, hide_parameters=True)
-    try:
-        yield active
-    finally:
-        active.dispose()
-        with engine.begin() as connection:
-            connection.execute(text(f"DROP SCHEMA {schema} CASCADE"))
 
 
 @pytest.fixture

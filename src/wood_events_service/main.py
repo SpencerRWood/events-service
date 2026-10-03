@@ -18,6 +18,9 @@ from wood_events_service.config import Scope, Settings
 from wood_events_service.contracts import EventEnvelope, NotificationRequest, Receipt
 from wood_events_service.delivery import BrokerWorker, HttpWebhook, Webhook
 from wood_events_service.history import BrokerHistory
+from wood_events_service.notification_api import register_notification_routes
+from wood_events_service.notification_lifecycle import NotificationLifecycle
+from wood_events_service.providers import Provider, provider_registry
 from wood_events_service.routing import SubscriptionRouter
 from wood_events_service.security import (
     SecretPolicy,
@@ -44,6 +47,7 @@ def create_app(  # noqa: PLR0913, PLR0915 -- service-scoped routes and injectabl
     auth: ServiceAuth | None = None,
     webhook: Webhook | None = None,
     start_worker: bool = True,
+    providers: dict[str, Provider] | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -66,6 +70,13 @@ def create_app(  # noqa: PLR0913, PLR0915 -- service-scoped routes and injectabl
             if service == "broker"
             else None,
         )
+        if service == "notify":
+            app.state.notifications = NotificationLifecycle(
+                active_engine,
+                configured,
+                providers if providers is not None else provider_registry(configured),
+            )
+            app.state.store.notification_hook = app.state.notifications.schedule
         app.state.auth = auth or TokenAuth(configured.producer_credentials)
         app.state.logger = logger
         stop = asyncio.Event()
@@ -77,10 +88,20 @@ def create_app(  # noqa: PLR0913, PLR0915 -- service-scoped routes and injectabl
                 app.state.worker = BrokerWorker(
                     active_engine,
                     configured,
-                    webhook or HttpWebhook(configured.webhook_timeout_seconds),
+                    webhook
+                    or HttpWebhook(
+                        configured.webhook_timeout_seconds,
+                        credentials={
+                            item.consumer: item.auth_token
+                            for item in configured.subscriptions
+                            if item.auth_token is not None
+                        },
+                    ),
                 )
                 if start_worker:
                     worker_task = asyncio.create_task(app.state.worker.run(stop))
+            elif start_worker:
+                worker_task = asyncio.create_task(app.state.notifications.run(stop))
             yield
         except SQLAlchemyError:
             raise RuntimeError("Database unavailable or migration required") from None
@@ -136,9 +157,7 @@ def create_app(  # noqa: PLR0913, PLR0915 -- service-scoped routes and injectabl
         try:
             receipt = store.accept(envelope)
         except ValueError:
-            raise HTTPException(
-                422, "Credential-bearing content is forbidden"
-            ) from None
+            raise HTTPException(422, "Invalid or credential-bearing content") from None
         except IdempotencyConflictError:
             raise HTTPException(409, "Identity reused with different content") from None
         identifier = "event_id" if service == "broker" else "request_id"
@@ -162,6 +181,7 @@ def create_app(  # noqa: PLR0913, PLR0915 -- service-scoped routes and injectabl
         ) -> Receipt:
             return accept(request, envelope, source)
     else:
+        register_notification_routes(app)
 
         @app.post("/v1/notifications", status_code=201)
         def ingest_notification(

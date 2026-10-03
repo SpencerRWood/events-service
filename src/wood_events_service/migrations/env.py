@@ -2,6 +2,7 @@
 
 from alembic import context
 
+import wood_events_service.notification_models  # noqa: F401 -- register metadata
 from wood_events_service.storage import Base
 
 context.configure(

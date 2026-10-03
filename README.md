@@ -13,10 +13,11 @@ Readiness checks PostgreSQL connectivity and the required migration revision.
 Both validate configuration and schema at startup; they never create tables
 implicitly. A single container image runs either application by its command.
 
-The broker routes accepted events to machine consumers through durable webhook
-jobs and exposes delivery history and replay. Human provider delivery, suppression
-and response capture belong to the notification Story. Neither service executes
-workflow actions.
+The broker routes accepted events through durable webhook jobs. Notify applies
+declarative policy to direct requests and broker events, delivers through ntfy,
+Telegram and SMTP adapters, suppresses repeated conditions, and captures generic
+Telegram responses. Both expose scoped history and retry APIs. Neither service
+executes workflow actions.
 Dagster and originating services own orchestration. Infrastructure owns production
 deployment, external PostgreSQL, secret injection, promotion and rollback.
 
@@ -31,9 +32,11 @@ The credential variable is a JSON array with entries shaped as:
 [{"source":"producer-name","token":"runtime-injected-token-of-at-least-32-characters","scopes":["events:write"]}]
 ```
 
-Scopes are `events:write`, `events:read`, `events:replay` and
-`notifications:write`. Every credential is bound to
-its declared source; a request cannot impersonate another source. Authentication
+Scopes are `events:write`, `events:read`, `events:replay`, `notifications:write`,
+`notifications:read`, `notifications:retry` and `notifications:consume`.
+Producer and history credentials are bound to their declared source. The
+`notifications:consume` scope is reserved for a trusted broker relay, which carries
+the original producer source in its event envelope. Authentication
 uses the replaceable `ServiceAuth` interface and a Bearer header. Tokens must be
 unique. Inject only the credentials required by each independently deployed
 service. APIs remain private; local Compose binds host ports to loopback.
@@ -44,10 +47,39 @@ credentials. Locations must come from the canonical environment's secret mapping
 this repository does not invent Infisical paths. OpenProject credentials use Wood
 Tools' existing Infisical context and are not application secrets.
 
-Future provider configuration names are `NTFY_BASE_URL`, `TELEGRAM_BOT_TOKEN`,
-`SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME` and `SMTP_PASSWORD`; they are reserved
-for the provider Story and have no active adapters here. Provider secret locations
-remain operator-owned and must be verified before that integration.
+The checked-in `.infisical.json` selects project
+`7ea10433-2eeb-4c57-95a9-b793dd40c7a4` on
+`https://dev-infisical.woodhost.cloud`. The verified development folder is
+`/wood-events-service`. Populate values in environment `dev`; the example file
+contains names only. Optional empty provider variables are ignored. Launch with:
+
+```sh
+infisical run --env=dev --path=/wood-events-service -- uv run python -m wood_events_service.migrate
+bash scripts/run_service.sh dev notify
+bash scripts/run_service.sh dev broker
+```
+
+This local launcher injects secrets; it does not create production topology,
+register a Telegram webhook or promote a release. Other environments require their
+own operator-verified mapping. Production instances should receive only their own
+scoped credentials and provider secrets.
+
+| Name | Value and purpose |
+| --- | --- |
+| `WES_DATABASE_URL` | Secret PostgreSQL connection URL using `postgresql+psycopg`. |
+| `WES_PRODUCER_CREDENTIALS` | Secret JSON array of source, token and scopes; tokens are unique and at least 32 characters. |
+| `WES_SUBSCRIPTIONS` | Broker routing JSON; optional `auth_token` is a runtime-only secret for an authenticated consumer. |
+| `NTFY_BASE_URL`, `NTFY_TOPIC` | Both required to enable ntfy; HTTP(S) endpoint and topic. |
+| `NTFY_AUTH_TOKEN` | Optional secret ntfy Bearer token. |
+| `TELEGRAM_BOT_TOKEN` | Secret Bot API token; enables the Telegram adapter. |
+| `TELEGRAM_CHAT_ID` | Numeric destination chat ID, including negative group IDs. |
+| `TELEGRAM_WEBHOOK_SECRET` | Secret, generated 32–256 character value containing letters, digits, `_` or `-`; authenticates webhooks and signs callback data. |
+| `TELEGRAM_ALLOWED_USER_IDS` | Optional JSON array of numeric user IDs; empty permits any responder in the configured chat. |
+| `TELEGRAM_API_BASE_URL` | Defaults to `https://api.telegram.org`; override only for an operator-controlled Bot API service or local test substitute. |
+| `SMTP_HOST`, `SMTP_PORT` | Server and port; port defaults to 587. |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | Optional paired secret SMTP login values. |
+| `SMTP_SENDER`, `SMTP_RECIPIENTS` | Sender address and JSON recipient array, required when SMTP is enabled. |
+| `SMTP_TLS` | `starttls` (default) or `ssl`; certificate verification is enabled. |
 
 Non-secret settings use the `WES_` prefix: `EVENT_RETENTION_DAYS`,
 `NOTIFICATION_RETENTION_DAYS`, `DELIVERY_RETENTION_DAYS`, `RESPONSE_RETENTION_DAYS`
@@ -129,7 +161,9 @@ Webhooks POST the original v1 event JSON with `X-Event-ID`, `X-Correlation-ID` a
 `Idempotency-Key: <event_id>:<consumer>`. Timeout defaults to 5 seconds per HTTP
 phase. Redirects are terminal; response bodies, credentials and exception details
 are never retained. URLs must be HTTP(S) and contain no userinfo, query or fragment.
-Delivery uses no environment proxy or outbound authentication. Configure trusted
+Delivery uses no environment proxy. An optional subscription `auth_token` adds
+Bearer authentication, stays out of persisted jobs/settings dumps, and is included
+in the credential redaction policy. Configure trusted
 internal consumer URLs; payloads cannot choose destinations.
 
 2xx succeeds; network/timeouts, 408, 425, 429 and 5xx retry. Other statuses fail
@@ -161,6 +195,90 @@ Retention preserves events with pending jobs. Finished jobs expire after the
 delivery retention window, after which they are no longer replayable.
 There is no bulk log ingestion endpoint.
 
+## Notification lifecycle
+
+`POST /v1/notifications` accepts the v1 direct notification contract with
+`notifications:write`. `POST /v1/broker-events` accepts an original v1 event using
+the trusted `notifications:consume` relay scope. Broker-derived request IDs are
+deterministic per source/event ID and retries preserve correlation and causation.
+The immutable request and all scheduling state commit before any provider call.
+
+Example `WES_NOTIFICATION_POLICIES`:
+
+```json
+[{"name":"failures","sources":["scheduler"],"event_types":["job.failed"],"severities":["error","critical"],"channels":["ntfy","telegram"]},{"name":"interactive","notification_types":["action-required"],"policy_keys":["approval-request"],"channels":["telegram"]}]
+```
+
+Policy dimensions are ANDed; values inside each set are alternatives. Requested
+channels intersect matching policy channels. With no policies, explicitly requested
+channels are used; a policy-key-only request or unmatched event is durably marked
+suppressed. Broker messages render event type as title and structured event data as
+message. Policy does not interpret domain-specific workflow fields. Interactive
+requests with routed channels require Telegram.
+
+Point a broker subscription at notify's `/v1/broker-events` and supply a relay
+token that is present in notify's credential array with `notifications:consume`.
+The subscriber JSON contains `consumer`, `url`, matching predicates and optional
+`auth_token`; store that entire JSON value in Infisical when it contains a token.
+Only the event identity and consumer name are persisted by the broker.
+
+`WES_SUPPRESSION_SECONDS` defaults to 60; 0 disables suppression. A supplied
+`suppression_key` groups conditions by source. Otherwise equivalent source, type,
+severity, title, message, channels, policy key and actions form a fingerprint,
+ignoring correlation and generated identities. A database-locked window makes
+concurrent duplicates safe. Suppressed requests and attempt evidence remain
+queryable; they never trigger delivery.
+
+Each channel has independent pending/delivered/suppressed/transient-failure/
+terminal-failure/expired scheduling state.
+Workers serialize channels within one request while processing separate requests
+concurrently, preserving consistent response/retry state.
+Transient HTTP/network and SMTP 4xx failures use bounded exponential retry.
+Controls are `WES_PROVIDER_TIMEOUT_SECONDS`
+(5), `WES_NOTIFICATION_MAX_ATTEMPTS` (5), `WES_NOTIFICATION_BACKOFF_SECONDS` (1),
+`WES_NOTIFICATION_MAX_BACKOFF_SECONDS` (60) and `WES_NOTIFICATION_POLL_SECONDS` (1).
+Provider bodies and exception text are never persisted. A partially successful
+multi-recipient SMTP send is terminal to avoid automatically resending to successful
+recipients; history exposes its normalized failure code.
+
+Notification delivery is at-least-once. Telegram/ntfy/SMTP do not share the broker's
+consumer deduplication contract, so a process crash after provider acceptance and
+before the scheduling commit can duplicate a message. SMTP Message-ID stays stable;
+the service does not claim exactly-once remote delivery.
+
+Telegram uses signed, compact callback data referencing the request and declared
+action index. Configure the Bot API webhook URL as notify's
+`/v1/telegram/callbacks`, with `secret_token` equal to `TELEGRAM_WEBHOOK_SECRET`,
+and `allowed_updates=["callback_query"]`. Infrastructure owns public HTTPS exposure
+and webhook registration. The endpoint validates the secret header, signature,
+configured chat, optional responder allowlist, persisted message reference and
+declared action. First valid response is captured; an exact callback replay returns
+the original response. Different subsequent callbacks conflict. Normalized responses
+preserve request/correlation/causation identity; capture executes no domain action.
+Rotating the webhook/signing secret invalidates existing keyboards.
+
+The originating request supplies its response deadline. The worker and history
+queries record expiration deterministically without selecting an outcome. Expired
+requests reject new responses; previously accepted callback duplicates remain
+idempotent. Awaiting responses and pending delivery jobs pin retained parent/message
+records until expiration or response capture.
+
+Source-restricted `notifications:read` endpoints are:
+
+- `GET /v1/notifications?correlation_id=<uuid>&limit=50&offset=0`
+- `GET /v1/notifications/<request_id>`
+- `GET /v1/notifications/<request_id>/attempts`
+- `GET /v1/notifications/<request_id>/responses`
+
+Lists allow 1–100 rows; attempt/response endpoints also support offset pagination.
+`POST /v1/notifications/<request_id>/channels/<channel>/retry` requires
+`notifications:retry` and starts a new bounded cycle for a failed active channel.
+It preserves the request and prior attempts. Suppressed, delivered, expired or
+responded requests cannot be resent through this endpoint.
+
+Protocol references: [ntfy JSON publishing](https://docs.ntfy.sh/publish/#publish-as-json)
+and [Telegram Bot API](https://core.telegram.org/bots/api).
+
 ## Local development and verification
 
 ```sh
@@ -176,7 +294,10 @@ persistence tests. Repository verification migrates a disposable database and ru
 both real service processes, proving authentication, correlation and durable retry
 after restart. It also runs a real broker with two local HTTP consumers, transient
 retry, delivery history and replay across process restart. It is safe to retry
-and never uses the production database.
+and never uses the production database. Verification strips inherited application
+and provider variables, substitutes local HTTP providers, and proves authenticated
+broker-to-notify delivery, transient retry, direct action buttons, normalized
+callbacks and callback replay after process restart. It sends no live alerts.
 
 Local Compose includes PostgreSQL, a one-shot migration container, broker on
 loopback port 8000 and notify on loopback port 8001. Inject scoped credentials and
@@ -185,6 +306,10 @@ optionally a URL-safe `WES_LOCAL_POSTGRES_PASSWORD`, then run
 default database password is public development configuration. Empty producer
 credentials fail service startup; Compose configuration validation needs no secrets.
 Production PostgreSQL need not be bundled with the applications.
+An optional `notifications` Compose profile bundles ntfy for local use on loopback
+port 8080. Set `NTFY_BASE_URL=http://ntfy` and a topic, then use
+`docker compose --profile notifications up --build`. Endpoint configuration remains
+environment-supplied and the adapter can be replaced independently.
 
 ## Centralized release contract
 
