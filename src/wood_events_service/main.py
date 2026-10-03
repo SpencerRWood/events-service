@@ -1,5 +1,6 @@
 """Thin independently runnable broker and notify HTTP applications."""
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -12,8 +13,12 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
+from wood_events_service.broker_api import register_broker_routes
 from wood_events_service.config import Scope, Settings
 from wood_events_service.contracts import EventEnvelope, NotificationRequest, Receipt
+from wood_events_service.delivery import BrokerWorker, HttpWebhook, Webhook
+from wood_events_service.history import BrokerHistory
+from wood_events_service.routing import SubscriptionRouter
 from wood_events_service.security import (
     SecretPolicy,
     ServiceAuth,
@@ -31,12 +36,14 @@ Service = Literal["broker", "notify"]
 bearer = HTTPBearer(auto_error=False)
 
 
-def create_app(  # noqa: PLR0915 -- keep routes and lifespan service-scoped
+def create_app(  # noqa: PLR0913, PLR0915 -- service-scoped routes and injectable boundaries
     service: Service,
     settings: Settings | None = None,
     *,
     engine: Engine | None = None,
     auth: ServiceAuth | None = None,
+    webhook: Webhook | None = None,
+    start_worker: bool = True,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -52,15 +59,35 @@ def create_app(  # noqa: PLR0915 -- keep routes and lifespan service-scoped
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
         logger.propagate = False
-        app.state.store = Store(active_engine, policy)
+        app.state.store = Store(
+            active_engine,
+            policy,
+            SubscriptionRouter(configured.subscriptions)
+            if service == "broker"
+            else None,
+        )
         app.state.auth = auth or TokenAuth(configured.producer_credentials)
         app.state.logger = logger
+        stop = asyncio.Event()
+        worker_task: asyncio.Task[None] | None = None
         try:
             check_schema(active_engine)
+            if service == "broker":
+                app.state.history = BrokerHistory(active_engine)
+                app.state.worker = BrokerWorker(
+                    active_engine,
+                    configured,
+                    webhook or HttpWebhook(configured.webhook_timeout_seconds),
+                )
+                if start_worker:
+                    worker_task = asyncio.create_task(app.state.worker.run(stop))
             yield
         except SQLAlchemyError:
             raise RuntimeError("Database unavailable or migration required") from None
         finally:
+            stop.set()
+            if worker_task is not None:
+                await worker_task
             logger.removeHandler(handler)
             handler.close()
             if engine is None:
@@ -125,6 +152,7 @@ def create_app(  # noqa: PLR0915 -- keep routes and lifespan service-scoped
         return receipt
 
     if service == "broker":
+        register_broker_routes(app)
 
         @app.post("/v1/events", status_code=201)
         def ingest_event(

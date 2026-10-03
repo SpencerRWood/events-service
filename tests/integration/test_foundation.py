@@ -290,6 +290,7 @@ def test_migrations_round_trip_and_match_models(database_url: str) -> None:
         assert set(inspect(separate).get_table_names(schema=schema)) == {
             "alembic_version",
             "broker_events",
+            "broker_delivery_jobs",
             "notify_requests",
             "broker_delivery_attempts",
             "notify_delivery_attempts",

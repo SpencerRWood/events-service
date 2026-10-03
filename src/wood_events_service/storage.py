@@ -1,9 +1,10 @@
 """Durable transport records and concurrency-safe producer idempotency."""
 
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     ForeignKey,
     String,
@@ -19,6 +20,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from wood_events_service.config import Settings
 from wood_events_service.contracts import EventEnvelope, NotificationRequest, Receipt
+from wood_events_service.routing import Router
 from wood_events_service.security import SecretPolicy
 
 
@@ -65,6 +67,29 @@ class BrokerDelivery(AttemptRecord, Base):
     )
 
 
+class BrokerJob(Base):
+    """Mutable scheduling state; attempt evidence remains append-only."""
+
+    __tablename__ = "broker_delivery_jobs"
+    __table_args__ = (
+        UniqueConstraint("event_id", "consumer"),
+        CheckConstraint("status IN ('pending', 'delivered', 'terminal-failure')"),
+        CheckConstraint("attempts >= 0 AND generation >= 0"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    event_id: Mapped[UUID] = mapped_column(
+        ForeignKey("broker_events.id", ondelete="RESTRICT"), index=True
+    )
+    consumer: Mapped[str] = mapped_column(String(128))
+    status: Mapped[str] = mapped_column(String(32), default="pending")
+    attempts: Mapped[int] = mapped_column(default=0)
+    generation: Mapped[int] = mapped_column(default=0)
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class NotifyDelivery(AttemptRecord, Base):
     __tablename__ = "notify_delivery_attempts"
     request_id: Mapped[UUID] = mapped_column(
@@ -109,14 +134,17 @@ def check_schema(engine: Engine) -> None:
     """Readiness requires connectivity and the exact foundation migration."""
     with engine.connect() as connection:
         revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        if revision != "0001_foundation":
+        if revision != "0002_broker_lifecycle":
             raise SQLAlchemyError("Database migration required")
 
 
 class Store:
-    def __init__(self, engine: Engine, secrets: SecretPolicy) -> None:
+    def __init__(
+        self, engine: Engine, secrets: SecretPolicy, router: Router | None = None
+    ) -> None:
         self.engine = engine
         self.secrets = secrets
+        self.router = router
 
     def accept(self, envelope: EventEnvelope | NotificationRequest) -> Receipt:
         payload = envelope.model_dump(mode="json")
@@ -173,6 +201,19 @@ class Store:
                     raise IdempotencyConflictError
             if stored is None:
                 raise IdempotencyConflictError
+            if inserted is not None and isinstance(envelope, EventEnvelope):
+                session.add_all(
+                    BrokerJob(
+                        id=uuid4(),
+                        event_id=stored.id,
+                        consumer=consumer,
+                        next_attempt_at=stored.accepted_at,
+                        updated_at=stored.accepted_at,
+                    )
+                    for consumer in (
+                        self.router.destinations(envelope) if self.router else []
+                    )
+                )
             return Receipt(
                 record_id=stored.id,
                 correlation_id=stored.correlation_id,

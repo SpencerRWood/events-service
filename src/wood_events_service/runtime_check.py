@@ -15,6 +15,7 @@ from uuid import uuid4
 import httpx
 from sqlalchemy import create_engine, text
 
+from wood_events_service.broker_runtime import verify_broker
 from wood_events_service.migrate import migrate
 
 
@@ -78,7 +79,12 @@ def verify(url: str) -> None:
             {
                 "source": "runtime-check",
                 "token": token,
-                "scopes": ["events:write", "notifications:write"],
+                "scopes": [
+                    "events:write",
+                    "events:read",
+                    "events:replay",
+                    "notifications:write",
+                ],
             }
         ]
     )
@@ -86,6 +92,7 @@ def verify(url: str) -> None:
         **os.environ,
         "WES_DATABASE_URL": url,
         "WES_PRODUCER_CREDENTIALS": credentials,
+        "WES_SUBSCRIPTIONS": "[]",
     }
     correlation = str(uuid4())
     event_id, request_id = str(uuid4()), str(uuid4())
@@ -158,6 +165,7 @@ def verify(url: str) -> None:
                 require(token not in json.dumps(row.payload), "Credential persisted")
     finally:
         engine.dispose()
+    verify_broker(url, environment, token)
 
 
 def main() -> None:
@@ -177,6 +185,8 @@ def main() -> None:
                     "correlation",
                     "durable-restart",
                     "credential-exclusion",
+                    "broker-routing-webhooks",
+                    "broker-retry-replay-history",
                 ],
             }
         )
