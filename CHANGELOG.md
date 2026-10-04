@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v0.5.1 (2026-10-04)
+
+### Bug Fixes
+
+- **telegram**: Acknowledge repeated and expired action callbacks
+  ([#10](https://github.com/SpencerRWood/events-service/pull/10),
+  [`20e5b95`](https://github.com/SpencerRWood/events-service/commit/20e5b957f824aa6aaa2318be76c8550b1be4c8b1))
+
+
 ## v0.5.0 (2026-10-03)
 
 ### Features
