@@ -1,6 +1,7 @@
 """Real PostgreSQL notification policy, retry, suppression and response capture."""
 
 import asyncio
+import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from threading import Event
@@ -8,6 +9,7 @@ from typing import cast
 from unittest.mock import patch
 from uuid import uuid4
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -28,7 +30,7 @@ from events_service.notification_models import (
     NotificationJob,
 )
 from events_service.notification_policy import NotificationPolicy
-from events_service.providers import ProviderResult, callback_data
+from events_service.providers import ProviderResult, TelegramProvider, callback_data
 from events_service.retention import cleanup
 from events_service.security import SecretPolicy
 from events_service.storage import (
@@ -433,14 +435,11 @@ def test_callback_normalization_duplicates_expiration_and_no_execution(
         )
         assert duplicate.json()["duplicate"]
         assert duplicate.json()["response"] == response
-        assert (
-            client.post(
-                "/v1/telegram/callbacks",
-                json=update_for(original, identity="query-2", index=1),
-                headers=webhook_headers,
-            ).status_code
-            == 409
-        )
+        assert client.post(
+            "/v1/telegram/callbacks",
+            json=update_for(original, identity="query-2", index=1),
+            headers=webhook_headers,
+        ).json() == {"ignored": True, "reason": "already-answered"}
         assert (
             client.post(
                 "/v1/telegram/callbacks",
@@ -536,20 +535,126 @@ def test_expiration_is_deterministic_and_blocks_late_callbacks(
             start_worker=False,
         )
     ) as client:
-        assert (
-            client.post(
-                "/v1/telegram/callbacks",
-                json=update_for(original),
-                headers={"X-Telegram-Bot-Api-Secret-Token": WEBHOOK_SECRET},
-            ).status_code
-            == 410
-        )
+        assert client.post(
+            "/v1/telegram/callbacks",
+            json=update_for(original),
+            headers={"X-Telegram-Bot-Api-Secret-Token": WEBHOOK_SECRET},
+        ).json() == {"ignored": True, "reason": "expired"}
         assert (
             client.get(
                 f"/v1/notifications/{original.request_id}", headers=HEADERS
             ).json()["response_state"]
             == "expired"
         )
+
+
+def test_telegram_acknowledges_terminal_presses_and_retries_without_new_decisions(
+    broker_engine: Engine, notify_settings: Settings
+) -> None:
+    acknowledgements: list[dict[str, object]] = []
+    messages: list[httpx.Request] = []
+
+    def telegram(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("sendMessage"):
+            messages.append(request)
+            return httpx.Response(
+                200, json={"ok": True, "result": {"message_id": len(messages)}}
+            )
+        assert request.url.path.endswith("answerCallbackQuery")
+        acknowledgements.append(json.loads(request.content))
+        if len(acknowledgements) == 1:
+            return httpx.Response(503, json={"ok": False})
+        return httpx.Response(200, json={"ok": True, "result": True})
+
+    configured = notify_settings.model_copy(
+        update={"telegram_bot_token": SecretStr("test-only-telegram-bot")}
+    )
+    provider = TelegramProvider(configured, httpx.MockTransport(telegram))
+    original = action_request()
+    headers = {"X-Telegram-Bot-Api-Secret-Token": WEBHOOK_SECRET}
+    with TestClient(
+        create_app(
+            "notify",
+            configured,
+            engine=broker_engine,
+            providers={"telegram": provider},
+            start_worker=False,
+        )
+    ) as client:
+        client.post(
+            "/v1/notifications",
+            json=original.model_dump(mode="json"),
+            headers=HEADERS,
+        )
+        assert worker_for(client).deliver_one()
+        callback = update_for(original)
+        failed_ack = client.post(
+            "/v1/telegram/callbacks", json=callback, headers=headers
+        )
+        assert failed_ack.status_code == 503
+        replay = client.post("/v1/telegram/callbacks", json=callback, headers=headers)
+        assert replay.status_code == 200
+        assert replay.json()["duplicate"]
+        response = replay.json()["response"]
+        repeated = client.post(
+            "/v1/telegram/callbacks",
+            json=update_for(original, identity="new-press", index=1),
+            headers=headers,
+        )
+        assert repeated.status_code == 200
+        assert repeated.json() == {"ignored": True, "reason": "already-answered"}
+        assert client.get(
+            f"/v1/notifications/{original.request_id}/responses", headers=HEADERS
+        ).json() == [response]
+
+        expiring = action_request()
+        client.post(
+            "/v1/notifications",
+            json=expiring.model_dump(mode="json"),
+            headers=HEADERS,
+        )
+        assert worker_for(client).deliver_one()
+        assert (
+            worker_for(client).expire(as_of=datetime.now(UTC) + timedelta(days=1)) == 1
+        )
+        expired = client.post(
+            "/v1/telegram/callbacks",
+            json=update_for(expiring, identity="late-press", message_id=2),
+            headers=headers,
+        )
+        assert expired.status_code == 200
+        assert expired.json() == {"ignored": True, "reason": "expired"}
+        assert acknowledgements == [
+            {"callback_query_id": "query-1", "text": "Response recorded."},
+            {"callback_query_id": "query-1", "text": "Response recorded."},
+            {
+                "callback_query_id": "new-press",
+                "text": "This request has already been answered.",
+            },
+            {"callback_query_id": "late-press", "text": "This request has expired."},
+        ]
+        assert client.post("/v1/telegram/callbacks", json=callback).status_code == 401
+        assert (
+            client.post(
+                "/v1/telegram/callbacks",
+                json=update_for(original, index=1),
+                headers=headers,
+            ).status_code
+            == 409
+        )
+        invalid = update_for(original)
+        query = invalid["callback_query"]
+        assert isinstance(query, dict)
+        query["data"] = "invalid"
+        assert (
+            client.post(
+                "/v1/telegram/callbacks", json=invalid, headers=headers
+            ).status_code
+            == 422
+        )
+        assert len(acknowledgements) == 4
+        with Session(broker_engine) as session:
+            assert session.scalar(select(func.count()).select_from(ResponseRecord)) == 1
 
 
 def test_concurrent_callbacks_capture_one_response(

@@ -181,9 +181,15 @@ class TelegramProvider(HttpProvider):
             return ProviderResult("terminal-failure", "invalid-response")
         return ProviderResult("delivered", message_id=message["message_id"])
 
-    def acknowledge(self, callback_id: str) -> None:
+    def acknowledge(
+        self, callback_id: str, *, text: str | None = None
+    ) -> ProviderResult:
         # Capture is already committed. Acknowledgment only clears the UI spinner.
-        self.call("answerCallbackQuery", {"callback_query_id": callback_id})
+        payload: dict[str, object] = {"callback_query_id": callback_id}
+        if text is not None:
+            payload["text"] = text
+        result, _body = self.call("answerCallbackQuery", payload)
+        return result
 
 
 class SmtpProvider:

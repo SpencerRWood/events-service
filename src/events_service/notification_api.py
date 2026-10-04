@@ -230,5 +230,13 @@ def register_notification_routes(app: FastAPI) -> None:  # noqa: PLR0915 -- serv
         result = capture(lifecycle, update)
         provider = lifecycle.providers.get("telegram")
         if isinstance(provider, TelegramProvider):
-            provider.acknowledge(update.callback_query.id)
+            text = {
+                "already-answered": "This request has already been answered.",
+                "expired": "This request has expired.",
+            }.get(str(result.get("reason")), "Response recorded.")
+            acknowledged = provider.acknowledge(update.callback_query.id, text=text)
+            if acknowledged.outcome == "transient-failure":
+                # Telegram can retry the callback; capture is already durable
+                # and the same query returns its original response on replay.
+                raise HTTPException(503, "Telegram acknowledgement unavailable")
         return result
