@@ -93,10 +93,15 @@ def capture(
             ):
                 raise HTTPException(409, "Callback identity conflict")
             return {"response": previous.payload, "duplicate": True}
+        # A new press on an answered message is terminal, not a new response.
+        # Acknowledge it successfully so Telegram clears the spinner and stops
+        # retrying; keep authentication and message/signature checks above.
+        if state.response_state == "responded":
+            return {"ignored": True, "reason": "already-answered"}
         if state.response_state == "expired" or (
             request.response_deadline is not None and request.response_deadline <= now
         ):
-            raise HTTPException(410, "Response deadline expired")
+            return {"ignored": True, "reason": "expired"}
         if state.response_state != "awaiting-response":
             raise HTTPException(409, "Notification is not awaiting response")
         response = NormalizedResponse(
