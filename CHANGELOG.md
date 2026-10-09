@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.5.2 (2026-10-09)
+
+### Bug Fixes
+
+- Include architecture metadata in released artifacts
+  ([`2ee9491`](https://github.com/SpencerRWood/events-service/commit/2ee949109cecb94afdf617f8eabbdca0b5c2a681))
+
+
 ## v0.5.1 (2026-10-04)
 
 ### Bug Fixes
