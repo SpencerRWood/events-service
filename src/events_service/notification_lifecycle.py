@@ -5,7 +5,7 @@ import hashlib
 import json
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -19,10 +19,12 @@ from events_service.notification_models import (
     NotificationJob,
     NotificationMessage,
     NotificationState,
+    RecoveryNotificationPart,
     SuppressionWindow,
 )
 from events_service.notification_policy import NotificationRouter
 from events_service.providers import Provider, ProviderResult
+from events_service.recovery_presentation import telegram_parts
 from events_service.storage import NotificationRecord, NotifyDelivery
 
 
@@ -80,6 +82,29 @@ class NotificationLifecycle:
                     updated_at=accepted_at,
                 )
             )
+            event = request.context.get("event")
+            if (
+                channel == "telegram"
+                and request.source == "recovery-verification"
+                and isinstance(event, dict)
+            ):
+                data = event.get("data")
+                if isinstance(data, dict) and "report_blocks" in data:
+                    for position, payload in enumerate(telegram_parts(data), 1):
+                        session.add(
+                            RecoveryNotificationPart(
+                                id=uuid5(
+                                    NAMESPACE_URL,
+                                    f"wes-recovery-part:{request.request_id}:{position}",
+                                ),
+                                request_id=request.request_id,
+                                position=position,
+                                payload=payload,
+                                status="pending",
+                                attempts=0,
+                                updated_at=accepted_at,
+                            )
+                        )
             if status == "suppressed":
                 session.add(
                     NotifyDelivery(
@@ -212,6 +237,31 @@ class NotificationLifecycle:
                 # Commit intent before the remote side effect. A crash cannot
                 # roll this back into a pending job that sends a second message.
                 identity = job.id
+                part = session.scalar(
+                    select(RecoveryNotificationPart)
+                    .where(
+                        RecoveryNotificationPart.request_id == request.request_id,
+                        RecoveryNotificationPart.status != "delivered",
+                    )
+                    .order_by(RecoveryNotificationPart.position)
+                    .limit(1)
+                    .with_for_update()
+                )
+                if part is not None:
+                    if part.status not in {"pending", "transient-failure"}:
+                        raise RuntimeError(
+                            "Reconcile uncertain recovery part before delivery"
+                        )
+                    part.status = "dispatching"
+                    part.updated_at = now
+                    request = request.model_copy(
+                        update={
+                            "context": {
+                                **request.context,
+                                "recovery_part": part.payload,
+                            }
+                        }
+                    )
                 job.status = "dispatching"
                 job.updated_at = now
                 session.commit()
@@ -274,7 +324,9 @@ class NotificationLifecycle:
         )
         # Rate limiting is a known rejection. Timeouts, transport errors and
         # server failures might have accepted the message: do not resend them.
-        if result.outcome == "transient-failure" and result.error_code != "http-429":
+        if (
+            result.outcome == "transient-failure" and result.error_code != "http-429"
+        ) or result.error_code in {"invalid-response", "oversize-response"}:
             result = ProviderResult("terminal-failure", "delivery-uncertain")
         with Session(self.engine) as session, session.begin():
             job = session.get(NotificationJob, identity, with_for_update=True)
@@ -283,9 +335,41 @@ class NotificationLifecycle:
             job.attempts += 1
             job.updated_at = now
             job.status = result.outcome
+            part = session.scalar(
+                select(RecoveryNotificationPart)
+                .where(
+                    RecoveryNotificationPart.request_id == request.request_id,
+                    RecoveryNotificationPart.status == "dispatching",
+                )
+                .with_for_update()
+            )
+            if part is not None:
+                part.attempts += 1
+                part.status = result.outcome
+                part.error_code = result.error_code
+                part.message_id = result.message_id
+                part.updated_at = now
+                if (
+                    result.outcome == "delivered"
+                    and session.scalar(
+                        select(RecoveryNotificationPart.id)
+                        .where(
+                            RecoveryNotificationPart.request_id == request.request_id,
+                            RecoveryNotificationPart.position > part.position,
+                        )
+                        .limit(1)
+                    )
+                    is not None
+                ):
+                    job.status = "pending"
+                    job.next_attempt_at = now
             if result.outcome == "transient-failure":
-                if job.attempts >= self.settings.notification_max_attempts:
+                if (
+                    part.attempts if part else job.attempts
+                ) >= self.settings.notification_max_attempts:
                     job.status = "terminal-failure"
+                    if part:
+                        part.status = "terminal-failure"
                 job.next_attempt_at = now + timedelta(
                     seconds=self.settings.notification_backoff_seconds
                 )
@@ -352,6 +436,16 @@ class NotificationLifecycle:
             if row is None:
                 return False
             job, state = row
+            blocked_part = session.scalar(
+                select(RecoveryNotificationPart)
+                .where(
+                    RecoveryNotificationPart.request_id == request_id,
+                    RecoveryNotificationPart.status == "dispatching",
+                )
+                .limit(1)
+            )
+            if blocked_part is not None:
+                raise ValueError("Reconcile uncertain Telegram part before retry")
             if (
                 channel == "telegram"
                 and source == "recovery-verification"
@@ -366,6 +460,14 @@ class NotificationLifecycle:
                 is not None
             ):
                 raise ValueError("Reconcile uncertain Telegram delivery before retry")
+            session.execute(
+                update(RecoveryNotificationPart)
+                .where(
+                    RecoveryNotificationPart.request_id == request_id,
+                    RecoveryNotificationPart.status == "terminal-failure",
+                )
+                .values(status="pending", attempts=0, error_code=None, updated_at=now)
+            )
             if state.response_state in {
                 "expired",
                 "responded",

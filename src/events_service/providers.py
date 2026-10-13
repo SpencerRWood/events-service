@@ -152,7 +152,16 @@ class TelegramProvider(HttpProvider):
             "chat_id": self.settings.telegram_chat_id,
             "text": f"{request.title}\n\n{request.message}",
         }
-        if len(str(payload["text"])) > 4096:
+        part = request.context.get("recovery_part")
+        if (
+            isinstance(part, dict)
+            and isinstance(part.get("html"), str)
+            and isinstance(part.get("plain"), str)
+        ):
+            payload["text"] = part["html"]
+            payload["parse_mode"] = "HTML"
+        plain = part["plain"] if isinstance(part, dict) else str(payload["text"])
+        if len(str(plain).encode("utf-16-le")) // 2 > 4096:
             return ProviderResult("terminal-failure", "message-too-long")
         if request.response_actions:
             secret = self.settings.telegram_webhook_secret
@@ -172,6 +181,12 @@ class TelegramProvider(HttpProvider):
                 ]
             }
         result, body = self.call("sendMessage", payload)
+        # A definite 400 rich-format rejection is safe to retry as plain text.
+        # Ambiguous acceptance must retain the existing reconciliation boundary.
+        if result.error_code == "http-400" and "parse_mode" in payload:
+            payload.pop("parse_mode")
+            payload["text"] = plain
+            result, body = self.call("sendMessage", payload)
         if result.outcome != "delivered":
             return result
         message = body.get("result")

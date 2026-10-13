@@ -147,7 +147,7 @@ def test_concurrent_migrations_serialize_on_a_fresh_schema(
         with active.connect() as connection:
             assert (
                 connection.scalar(text("SELECT version_num FROM alembic_version"))
-                == "0004_recovery_dispatch"
+                == "0005_recovery_parts"
             )
     finally:
         active.dispose()

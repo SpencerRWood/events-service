@@ -11,6 +11,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from events_service.storage import Base
@@ -75,3 +76,28 @@ class NotificationMessage(Base):
     chat_id: Mapped[int] = mapped_column(BigInteger)
     message_id: Mapped[int] = mapped_column(BigInteger)
     delivered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class RecoveryNotificationPart(Base):
+    """Frozen Telegram parts; aggregate job advances only after confirmed delivery."""
+
+    __tablename__ = "notify_recovery_parts"
+    __table_args__ = (
+        UniqueConstraint("request_id", "position"),
+        CheckConstraint("position >= 1 AND attempts >= 0"),
+        CheckConstraint(
+            "status IN ('pending', 'dispatching', 'delivered', "
+            "'transient-failure', 'terminal-failure')"
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    request_id: Mapped[UUID] = mapped_column(
+        ForeignKey("notify_requests.id", ondelete="RESTRICT"), index=True
+    )
+    position: Mapped[int]
+    payload: Mapped[dict[str, str]] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String(32))
+    attempts: Mapped[int] = mapped_column(default=0)
+    error_code: Mapped[str | None] = mapped_column(String(128))
+    message_id: Mapped[int | None] = mapped_column(BigInteger)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

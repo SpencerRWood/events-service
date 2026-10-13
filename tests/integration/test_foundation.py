@@ -295,6 +295,7 @@ def test_migrations_round_trip_and_match_models(database_url: str) -> None:
             "notify_delivery_jobs",
             "notify_suppression_windows",
             "notify_messages",
+            "notify_recovery_parts",
             "notify_requests",
             "broker_delivery_attempts",
             "notify_delivery_attempts",
