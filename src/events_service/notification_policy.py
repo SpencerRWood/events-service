@@ -67,6 +67,21 @@ class NotificationRouter:
             "error": "error",
             "critical": "error",
         }
+        title = event.event_type
+        message = json.dumps(event.data, ensure_ascii=False, sort_keys=True)
+        if (
+            event.source == "recovery-verification"
+            and event.event_type == "recovery.run-completed"
+        ):
+            if (
+                event.data.get("title") != "Backup & Recovery Scorecard"
+                or event.data.get("execution_status")
+                not in {"SUCCESS", "FAILURE", "CANCELED"}
+                or not isinstance(event.data.get("message"), str)
+            ):
+                raise ValueError("Invalid recovery terminal scorecard")
+            title = "Backup & Recovery Scorecard"
+            message = str(event.data["message"])
         return NotificationRequest.model_validate(
             {
                 "request_id": uuid5(
@@ -75,8 +90,8 @@ class NotificationRouter:
                 "source": event.source,
                 "notification_type": types[event.severity],
                 "severity": event.severity,
-                "title": event.event_type,
-                "message": json.dumps(event.data, ensure_ascii=False, sort_keys=True),
+                "title": title,
+                "message": message,
                 "correlation_id": event.correlation_id,
                 "causation_id": event.event_id,
                 "policy_key": "broker-event",
