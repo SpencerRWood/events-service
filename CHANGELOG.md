@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.5.3 (2026-10-13)
+
+### Bug Fixes
+
+- Render and deduplicate recovery Telegram scorecards
+  ([`0c5325f`](https://github.com/SpencerRWood/events-service/commit/0c5325f895ed871319bbfe5cfa785fdbc56ea85e))
+
+
 ## v0.5.2 (2026-10-09)
 
 ### Bug Fixes
