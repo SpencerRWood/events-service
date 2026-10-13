@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.6.0 (2026-10-13)
+
+### Features
+
+- Deliver recovery reports as durable ordered Telegram parts
+  ([`70b1e99`](https://github.com/SpencerRWood/events-service/commit/70b1e9944c582b36b774290f9d8c724b4b817f9a))
+
+
 ## v0.5.3 (2026-10-13)
 
 ### Bug Fixes
