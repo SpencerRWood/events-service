@@ -40,7 +40,7 @@ class NotificationJob(Base):
         UniqueConstraint("request_id", "channel"),
         CheckConstraint(
             "status IN ('pending', 'delivered', 'suppressed', 'transient-failure', "
-            "'terminal-failure', 'expired')"
+            "'terminal-failure', 'expired', 'dispatching')"
         ),
         CheckConstraint("attempts >= 0 AND generation >= 0"),
     )

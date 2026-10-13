@@ -204,6 +204,18 @@ class NotificationLifecycle:
                 )
                 return True
             provider = self.providers.get(job.channel)
+            if (
+                job.channel == "telegram"
+                and request.source == "recovery-verification"
+                and request.context.get("event_type") == "recovery.run-completed"
+            ):
+                # Commit intent before the remote side effect. A crash cannot
+                # roll this back into a pending job that sends a second message.
+                identity = job.id
+                job.status = "dispatching"
+                job.updated_at = now
+                session.commit()
+                return self._deliver_recovery_telegram(identity, request, now)
             result = (
                 provider.send(request)
                 if provider is not None
@@ -251,6 +263,59 @@ class NotificationLifecycle:
             state.updated_at = completed
             return True
 
+    def _deliver_recovery_telegram(
+        self, identity: UUID, request: NotificationRequest, now: datetime
+    ) -> bool:
+        provider = self.providers.get("telegram")
+        result = (
+            provider.send(request)
+            if provider is not None
+            else ProviderResult("terminal-failure", "provider-unconfigured")
+        )
+        # Rate limiting is a known rejection. Timeouts, transport errors and
+        # server failures might have accepted the message: do not resend them.
+        if result.outcome == "transient-failure" and result.error_code != "http-429":
+            result = ProviderResult("terminal-failure", "delivery-uncertain")
+        with Session(self.engine) as session, session.begin():
+            job = session.get(NotificationJob, identity, with_for_update=True)
+            if job is None or job.status != "dispatching":
+                raise RuntimeError("Recovery notification dispatch state changed")
+            job.attempts += 1
+            job.updated_at = now
+            job.status = result.outcome
+            if result.outcome == "transient-failure":
+                if job.attempts >= self.settings.notification_max_attempts:
+                    job.status = "terminal-failure"
+                job.next_attempt_at = now + timedelta(
+                    seconds=self.settings.notification_backoff_seconds
+                )
+            session.add(
+                NotifyDelivery(
+                    id=uuid4(),
+                    request_id=request.request_id,
+                    correlation_id=request.correlation_id,
+                    destination="telegram",
+                    outcome=result.outcome,
+                    error_code=result.error_code,
+                    attempted_at=now,
+                )
+            )
+            if (
+                result.message_id is not None
+                and self.settings.telegram_chat_id is not None
+            ):
+                session.add(
+                    NotificationMessage(
+                        id=uuid4(),
+                        request_id=request.request_id,
+                        correlation_id=request.correlation_id,
+                        chat_id=self.settings.telegram_chat_id,
+                        message_id=result.message_id,
+                        delivered_at=now,
+                    )
+                )
+        return True
+
     async def run(self, stop: asyncio.Event) -> None:
         while not stop.is_set():
             try:
@@ -287,6 +352,20 @@ class NotificationLifecycle:
             if row is None:
                 return False
             job, state = row
+            if (
+                channel == "telegram"
+                and source == "recovery-verification"
+                and session.scalar(
+                    select(NotifyDelivery.id)
+                    .where(
+                        NotifyDelivery.request_id == request_id,
+                        NotifyDelivery.error_code == "delivery-uncertain",
+                    )
+                    .limit(1)
+                )
+                is not None
+            ):
+                raise ValueError("Reconcile uncertain Telegram delivery before retry")
             if state.response_state in {
                 "expired",
                 "responded",

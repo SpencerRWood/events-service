@@ -135,7 +135,7 @@ def check_schema(engine: Engine) -> None:
     """Readiness requires connectivity and the exact foundation migration."""
     with engine.connect() as connection:
         revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        if revision != "0003_notify_lifecycle":
+        if revision != "0004_recovery_dispatch":
             raise SQLAlchemyError("Database migration required")
 
 
