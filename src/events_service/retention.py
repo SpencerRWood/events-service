@@ -11,6 +11,7 @@ from events_service.notification_models import (
     NotificationJob,
     NotificationMessage,
     NotificationState,
+    RecoveryNotificationPart,
     SuppressionWindow,
 )
 from events_service.storage import (
@@ -51,6 +52,11 @@ def cleanup(engine: Engine, settings: Settings, *, as_of: datetime) -> dict[str,
                 delete(NotificationJob)
                 .where(
                     NotificationJob.status.not_in(["pending", "transient-failure"]),
+                    ~exists().where(
+                        RecoveryNotificationPart.request_id
+                        == NotificationJob.request_id,
+                        RecoveryNotificationPart.status != "delivered",
+                    ),
                     NotificationJob.updated_at
                     < as_of - timedelta(days=settings.delivery_retention_days),
                     ~exists().where(
@@ -74,6 +80,21 @@ def cleanup(engine: Engine, settings: Settings, *, as_of: datetime) -> dict[str,
                     ),
                 )
                 .returning(NotificationState.id)
+            ).all()
+        )
+        removed[RecoveryNotificationPart.__tablename__] = len(
+            session.scalars(
+                delete(RecoveryNotificationPart)
+                .where(
+                    RecoveryNotificationPart.status == "delivered",
+                    RecoveryNotificationPart.updated_at
+                    < as_of - timedelta(days=settings.delivery_retention_days),
+                    ~exists().where(
+                        NotificationJob.request_id
+                        == RecoveryNotificationPart.request_id
+                    ),
+                )
+                .returning(RecoveryNotificationPart.id)
             ).all()
         )
         # Pending jobs pin their parent; finished scheduling state expires only
@@ -131,6 +152,9 @@ def cleanup(engine: Engine, settings: Settings, *, as_of: datetime) -> dict[str,
                     exists().where(NotificationJob.request_id == NotificationRecord.id),
                     exists().where(
                         NotificationMessage.request_id == NotificationRecord.id
+                    ),
+                    exists().where(
+                        RecoveryNotificationPart.request_id == NotificationRecord.id
                     ),
                 ),
             ),

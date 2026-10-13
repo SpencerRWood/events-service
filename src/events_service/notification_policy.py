@@ -11,6 +11,7 @@ from events_service.contracts import (
     NotificationRequest,
     Severity,
 )
+from events_service.recovery_presentation import telegram_parts
 
 
 class NotificationPolicy(BaseModel):
@@ -82,6 +83,12 @@ class NotificationRouter:
                 raise ValueError("Invalid recovery terminal scorecard")
             title = "Backup & Recovery Scorecard"
             message = str(event.data["message"])
+            if "report_blocks" in event.data:
+                parts = telegram_parts(event.data)
+                # The wire message retains its existing 4096 limit. The complete
+                # report stays in event context, and immutable parts are persisted
+                # by Wood Notify under the same logical request identity.
+                message = parts[0]["plain"]
         return NotificationRequest.model_validate(
             {
                 "request_id": uuid5(

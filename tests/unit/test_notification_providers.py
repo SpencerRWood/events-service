@@ -127,6 +127,52 @@ def test_ntfy_and_telegram_payloads_are_adapter_owned(
             )
 
 
+def test_recovery_html_definite_rejection_uses_plain_fallback(
+    provider_settings: Settings,
+) -> None:
+    seen: list[dict[str, object]] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        if len(seen) == 1:
+            return httpx.Response(400, json={"ok": False, "description": BOT_TOKEN})
+        return httpx.Response(200, json={"ok": True, "result": {"message_id": 42}})
+
+    request = notification().model_copy(
+        update={
+            "context": {"recovery_part": {"html": "<b>Report</b>", "plain": "Report"}}
+        }
+    )
+    provider = TelegramProvider(provider_settings, httpx.MockTransport(handle))
+    assert provider.send(request).message_id == 42
+    assert seen[0]["parse_mode"] == "HTML"
+    assert "parse_mode" not in seen[1]
+    assert seen[1]["text"] == "Report"
+    assert BOT_TOKEN not in str(seen)
+
+
+def test_recovery_html_ambiguous_acceptance_does_not_fallback(
+    provider_settings: Settings,
+) -> None:
+    calls = 0
+
+    def handle(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(503, json={"ok": False})
+
+    request = notification().model_copy(
+        update={
+            "context": {"recovery_part": {"html": "<b>Report</b>", "plain": "Report"}}
+        }
+    )
+    result = TelegramProvider(provider_settings, httpx.MockTransport(handle)).send(
+        request
+    )
+    assert result.error_code == "http-503"
+    assert calls == 1
+
+
 @pytest.mark.parametrize(
     "value",
     [

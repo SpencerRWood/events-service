@@ -13,7 +13,11 @@ from sqlalchemy.orm import Session
 from events_service.config import Scope
 from events_service.contracts import EventEnvelope, Receipt
 from events_service.notification_lifecycle import NotificationLifecycle
-from events_service.notification_models import NotificationJob, NotificationState
+from events_service.notification_models import (
+    NotificationJob,
+    NotificationState,
+    RecoveryNotificationPart,
+)
 from events_service.providers import TelegramProvider
 from events_service.security import ServiceAuth
 from events_service.storage import (
@@ -110,6 +114,21 @@ def register_notification_routes(app: FastAPI) -> None:  # noqa: PLR0915 -- serv
                 "accepted_at": parent.accepted_at,
                 "response_state": state.response_state if state else "none",
                 "response_deadline": state.response_deadline if state else None,
+                "parts": [
+                    {
+                        "position": p.position,
+                        "status": p.status,
+                        "attempts": p.attempts,
+                        "error_code": p.error_code,
+                        "message_id": p.message_id,
+                        "updated_at": p.updated_at,
+                    }
+                    for p in session.scalars(
+                        select(RecoveryNotificationPart)
+                        .where(RecoveryNotificationPart.request_id == request_id)
+                        .order_by(RecoveryNotificationPart.position)
+                    )
+                ],
                 "channels": [
                     {
                         "channel": job.channel,
