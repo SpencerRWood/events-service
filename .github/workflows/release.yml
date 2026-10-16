@@ -1,30 +1,46 @@
-name: Release
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  release:
-    uses: SpencerRWood/workflows/.github/workflows/release-container.yml@v3
-    permissions:
-      contents: write
-      packages: write
-
-  promote-dev:
-    needs: release
-    if: needs.release.outputs.released == 'true' && vars.EVENTS_SERVICE_PROMOTION_ENABLED == 'true'
-    uses: SpencerRWood/workflows/.github/workflows/promote-container-to-dev.yml@v3
-    permissions:
-      contents: read
-    with:
-      infrastructure_repository: SpencerRWood/infrastructure
-      image_key: events_service_image_ref
-      image_name: events-service
-      release_tag: ${{ needs.release.outputs.release_tag }}
-      image_repository: ${{ needs.release.outputs.image_repository }}
-      version_image: ${{ needs.release.outputs.version_image }}
-      image_digest: ${{ needs.release.outputs.image_digest }}
-      version_image_digest: ${{ needs.release.outputs.version_image_digest }}
-    secrets:
-      infrastructure_token: ${{ secrets.INFRASTRUCTURE_PROMOTION_TOKEN }}
+{
+  "name": "Release",
+  "on": {
+    "push": {
+      "branches": [
+        "main"
+      ]
+    }
+  },
+  "jobs": {
+    "release": {
+      "uses": "SpencerRWood/workflows/.github/workflows/release-container.yml@9748b1cd6287d84d55c4277c93ca5dae01fb1787",
+      "permissions": {
+        "contents": "write",
+        "packages": "write",
+        "id-token": "write",
+        "attestations": "write"
+      },
+      "with": {
+        "workflow_revision": "9748b1cd6287d84d55c4277c93ca5dae01fb1787"
+      }
+    },
+    "promote-dev": {
+      "needs": "release",
+      "if": "needs.release.outputs.released == 'true' && vars.EVENTS_SERVICE_PROMOTION_ENABLED == 'true'",
+      "uses": "SpencerRWood/workflows/.github/workflows/promote-container-to-dev.yml@9748b1cd6287d84d55c4277c93ca5dae01fb1787",
+      "permissions": {
+        "contents": "read"
+      },
+      "with": {
+        "infrastructure_repository": "SpencerRWood/infrastructure",
+        "image_key": "events_service_image_ref",
+        "image_name": "events-service",
+        "release_tag": "${{ needs.release.outputs.release_tag }}",
+        "image_repository": "${{ needs.release.outputs.image_repository }}",
+        "version_image": "${{ needs.release.outputs.version_image }}",
+        "image_digest": "${{ needs.release.outputs.image_digest }}",
+        "version_image_digest": "${{ needs.release.outputs.version_image_digest }}",
+        "workflow_revision": "9748b1cd6287d84d55c4277c93ca5dae01fb1787"
+      },
+      "secrets": {
+        "infrastructure_token": "${{ secrets.INFRASTRUCTURE_PROMOTION_TOKEN }}"
+      }
+    }
+  }
+}

@@ -1,191 +1,130 @@
-[build-system]
-requires = ["hatchling>=1.27"]
-build-backend = "hatchling.build"
+["build-system"]
+"requires" = ["hatchling>=1.27"]
+"build-backend" = "hatchling.build"
 
-[project]
-name = "events-service"
-version = "0.6.0"
-description = "Internal event and human interaction transport foundation."
-readme = "README.md"
-requires-python = ">=3.14"
-authors = [
-  { name = "Spencer Wood" },
-]
-classifiers = [
-  "Development Status :: 3 - Alpha",
-  "Intended Audience :: Developers",
-  "License :: OSI Approved :: MIT License",
-  "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.14",
-  "Typing :: Typed",
-]
-dependencies = [
-  "fastapi",
-  "uvicorn[standard]",
-  "pydantic>=2.11,<3",
-  "pydantic-settings>=2.10,<3",
-  "sqlalchemy>=2.0,<3",
-  "alembic>=1.16,<2",
-  "psycopg[binary]>=3.2,<4",
-  "httpx>=0.28,<1",
-]
+["project"]
+"name" = "events-service"
+"version" = "0.6.0"
+"description" = "Internal event and human interaction transport foundation."
+"readme" = "README.md"
+"requires-python" = ">=3.14"
+"authors" = [{ "name" = "Spencer Wood" }]
+"classifiers" = ["Development Status :: 3 - Alpha", "Intended Audience :: Developers", "License :: OSI Approved :: MIT License", "Programming Language :: Python :: 3", "Programming Language :: Python :: 3.14", "Typing :: Typed"]
+"dependencies" = ["fastapi", "uvicorn[standard]", "pydantic>=2.11,<3", "pydantic-settings>=2.10,<3", "sqlalchemy>=2.0,<3", "alembic>=1.16,<2", "psycopg[binary]>=3.2,<4", "httpx>=0.28,<1"]
 
-[dependency-groups]
-dev = [
-  "gitpython>=3.1.61",
-  "coverage[toml]",
-  "mypy",
-  "pre-commit",
-  "pytest",
-  "pytest-cov",
-  "python-semantic-release",
-  "ruff",
-  "pyyaml>=6.0.3",
-  "types-pyyaml>=6.0.12.20260906",
-  "dagster>=1.13.16,<2",
-]
+["dependency-groups"]
+"dev" = ["gitpython>=3.1.61", "coverage[toml]", "mypy", "pre-commit", "pytest", "pytest-cov", "python-semantic-release", "ruff", "pyyaml>=6.0.3", "types-pyyaml>=6.0.12.20260906", "dagster>=1.13.16,<2"]
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/events_service"]
+["tool"]
 
-[tool.wood.openproject]
-project_id = 3
-initiative_id = 453
-release_id = 20
-epic_id = 454
+["tool"."hatch"]
 
-[tool.wood.workflow]
-output_directory = "/private/tmp"
+["tool"."hatch"."build"]
 
-[tool.wood.verify]
-version = 1
-retry_safe = true
+["tool"."hatch"."build"."targets"]
 
-[[tool.wood.verify.checks]]
-name = "postgres-foundation"
-argv = ["uv", "run", "python", "scripts/verify_foundation.py"]
-timeout_seconds = 60
-required = true
+["tool"."hatch"."build"."targets"."wheel"]
+"packages" = ["src/events_service"]
 
-[[tool.wood.verify.checks]]
-name = "deployed-runtime"
-argv = ["uv", "run", "python", "-m", "scripts.verify_deployment"]
-timeout_seconds = 60
-required = true
+["tool"."hatch"."build"."targets"."sdist"]
+"exclude" = ["/.github", "/.gitignore", "/.pre-commit-config.yaml", "/.python-version", "/uv.lock"]
 
-[tool.hatch.build.targets.sdist]
-exclude = [
-  "/.github",
-  "/.gitignore",
-  "/.pre-commit-config.yaml",
-  "/.python-version",
-  "/uv.lock",
-]
+["tool"."wood"]
 
-[tool.pytest.ini_options]
-addopts = [
-  "--strict-config",
-  "--strict-markers",
-]
-testpaths = ["tests"]
+["tool"."wood"."openproject"]
+"project_id" = 3
+"initiative_id" = 453
+"release_id" = 20
+"epic_id" = 454
 
-[tool.coverage.run]
-branch = true
-source = ["events_service"]
+["tool"."wood"."workflow"]
+"output_directory" = "/private/tmp"
 
-[tool.coverage.report]
-fail_under = 90
-show_missing = true
-skip_covered = true
+["tool"."wood"."verify"]
+"version" = 1
+"retry_safe" = true
+"checks" = [{ "name" = "postgres-foundation", "argv" = ["uv", "run", "python", "scripts/verify_foundation.py"], "timeout_seconds" = 60, "required" = true }, { "name" = "deployed-runtime", "argv" = ["uv", "run", "python", "-m", "scripts.verify_deployment"], "timeout_seconds" = 60, "required" = true }]
 
-[tool.ruff]
-line-length = 88
-target-version = "py314"
-src = ["src", "tests"]
+["tool"."wood"."architecture"]
+"domain" = "platform-services"
+"capability" = "event-messaging"
+"kind" = "api-service"
 
-[tool.ruff.lint]
-select = [
-  "A",
-  "ARG",
-  "B",
-  "C4",
-  "DTZ",
-  "E",
-  "ERA",
-  "F",
-  "I",
-  "N",
-  "PL",
-  "PT",
-  "PTH",
-  "RET",
-  "RUF",
-  "S",
-  "SIM",
-  "T20",
-  "UP",
-  "W",
-]
-ignore = [
-  "PLR2004",
-]
+["tool"."wood"."branching"]
+"strategy" = "integration"
+"release_id" = 20
+"integration_branch" = "development"
+"scope_reference" = "https://projects.woodhost.cloud/work_packages/558 activity 1481; canonical fleet migration authorized 2026-10-15; protected-main merges remain separately approved."
 
-[tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = [
-  "S101",
-]
+["tool"."pytest"]
+
+["tool"."pytest"."ini_options"]
+"addopts" = ["--strict-config", "--strict-markers"]
+"testpaths" = ["tests"]
+
+["tool"."coverage"]
+
+["tool"."coverage"."run"]
+"branch" = true
+"source" = ["events_service"]
+
+["tool"."coverage"."report"]
+"fail_under" = 90
+"show_missing" = true
+"skip_covered" = true
+
+["tool"."ruff"]
+"line-length" = 88
+"target-version" = "py314"
+"src" = ["src", "tests"]
+
+["tool"."ruff"."lint"]
+"select" = ["A", "ARG", "B", "C4", "DTZ", "E", "ERA", "F", "I", "N", "PL", "PT", "PTH", "RET", "RUF", "S", "SIM", "T20", "UP", "W"]
+"ignore" = ["PLR2004"]
+
+["tool"."ruff"."lint"."per-file-ignores"]
+"tests/**/*.py" = ["S101"]
 "scripts/isolated_postgres.py" = ["S603", "S607"]
 "scripts/verify_foundation.py" = ["T201"]
 "scripts/verify_deployment.py" = ["T201"]
 "scripts/telegram_webhook.py" = ["T201"]
 "src/events_service/runtime_check.py" = ["T201"]
 
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-line-ending = "auto"
+["tool"."ruff"."format"]
+"quote-style" = "double"
+"indent-style" = "space"
+"line-ending" = "auto"
 
-[tool.mypy]
-python_version = "3.14"
-strict = true
-warn_unused_configs = true
-mypy_path = "src"
-files = ["src", "tests"]
+["tool"."mypy"]
+"python_version" = "3.14"
+"strict" = true
+"warn_unused_configs" = true
+"mypy_path" = "src"
+"files" = ["src", "tests"]
 
-[tool.semantic_release]
-commit_parser = "conventional"
-commit_message = "chore(release): {version}\n\nAutomatically generated by python-semantic-release"
-build_command = "uv build"
-allow_zero_version = true
-major_on_zero = false
-tag_format = "v{version}"
-version_toml = ["pyproject.toml:project.version"]
+["tool"."semantic_release"]
+"commit_parser" = "conventional"
+"commit_message" = "chore(release): {version}\n\nAutomatically generated by python-semantic-release"
+"build_command" = "uv build"
+"allow_zero_version" = true
+"major_on_zero" = false
+"tag_format" = "v{version}"
+"version_toml" = ["pyproject.toml:project.version"]
 
-[tool.semantic_release.commit_parser_options]
-minor_tags = ["feat"]
-patch_tags = ["fix", "perf"]
-parse_squash_commits = true
-ignore_merge_commits = true
+["tool"."semantic_release"."commit_parser_options"]
+"minor_tags" = ["feat"]
+"patch_tags" = ["fix", "perf"]
+"parse_squash_commits" = true
+"ignore_merge_commits" = true
 
-[tool.semantic_release.changelog]
-exclude_commit_patterns = [
-  '''chore(?:\([^)]*?\))?: .+''',
-  '''ci(?:\([^)]*?\))?: .+''',
-  '''docs(?:\([^)]*?\))?: .+''',
-  '''refactor(?:\([^)]*?\))?: .+''',
-  '''style(?:\([^)]*?\))?: .+''',
-  '''test(?:\([^)]*?\))?: .+''',
-  '''chore\(release\): .+''',
-]
+["tool"."semantic_release"."changelog"]
+"exclude_commit_patterns" = ["chore(?:\\([^)]*?\\))?: .+", "ci(?:\\([^)]*?\\))?: .+", "docs(?:\\([^)]*?\\))?: .+", "refactor(?:\\([^)]*?\\))?: .+", "style(?:\\([^)]*?\\))?: .+", "test(?:\\([^)]*?\\))?: .+", "chore\\(release\\): .+"]
 
-[tool.semantic_release.remote]
-type = "github"
-token = { env = "GITHUB_TOKEN" }
+["tool"."semantic_release"."remote"]
+"type" = "github"
 
-[tool.semantic_release.publish]
-upload_to_vcs_release = true
+["tool"."semantic_release"."remote"."token"]
+"env" = "GITHUB_TOKEN"
 
-[tool.wood.architecture]
-domain = "platform-services"
-capability = "event-messaging"
-kind = "api-service"
+["tool"."semantic_release"."publish"]
+"upload_to_vcs_release" = true
