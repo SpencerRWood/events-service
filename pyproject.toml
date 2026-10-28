@@ -33,9 +33,9 @@
 
 ["tool"."wood"."openproject"]
 "project_id" = 3
-"initiative_id" = 453
-"release_id" = 20
-"epic_id" = 454
+"initiative_id" = 571
+"release_id" = 29
+"epic_id" = 572
 
 ["tool"."wood"."workflow"]
 "output_directory" = "/private/tmp"
@@ -52,9 +52,9 @@
 
 ["tool"."wood"."branching"]
 "strategy" = "integration"
-"release_id" = 20
+"release_id" = 29
 "integration_branch" = "development"
-"scope_reference" = "https://projects.woodhost.cloud/work_packages/558 activity 1481; canonical fleet migration authorized 2026-10-15; protected-main merges remain separately approved."
+"scope_reference" = "https://projects.woodhost.cloud/work_packages/576; Codex user approved Documentation Automation scope rollover on 2026-10-27; prior Events R1 Stories 458-461 Closed; protected-main release remains separately approved."
 
 ["tool"."pytest"]
 

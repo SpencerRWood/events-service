@@ -135,7 +135,7 @@ def check_schema(engine: Engine) -> None:
     """Readiness requires connectivity and the exact foundation migration."""
     with engine.connect() as connection:
         revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        if revision != "0005_recovery_parts":
+        if revision != "0006_interactive_edits":
             raise SQLAlchemyError("Database migration required")
 
 
@@ -200,6 +200,10 @@ class Store:
                 if stored is None:
                     raise IdempotencyConflictError
                 expected = dict(stored.payload)
+                if isinstance(envelope, NotificationRequest):
+                    expected = NotificationRequest.model_validate(expected).model_dump(
+                        mode="json"
+                    )
                 proposed = dict(payload)
                 if by_id is None:
                     expected.pop(identity)

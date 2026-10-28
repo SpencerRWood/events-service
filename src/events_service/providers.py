@@ -70,6 +70,8 @@ class HttpProvider:
         url: str,
         payload: dict[str, object],
         headers: dict[str, str] | None = None,
+        *,
+        error_body: bool = False,
     ) -> tuple[ProviderResult, dict[str, object]]:
         try:
             with (
@@ -82,7 +84,7 @@ class HttpProvider:
                 client.stream("POST", url, json=payload, headers=headers) as response,
             ):
                 result = classify(response.status_code)
-                if result.outcome != "delivered":
+                if result.outcome != "delivered" and not error_body:
                     return result, {}
                 body = bytearray()
                 for chunk in response.iter_bytes():
@@ -137,6 +139,7 @@ class TelegramProvider(HttpProvider):
         result, body = self.post(
             f"{self.settings.telegram_api_base_url.rstrip('/')}/bot{token.get_secret_value()}/{method}",
             payload,
+            error_body=method == "editMessageText",
         )
         if result.outcome == "delivered" and body.get("ok") is not True:
             code = body.get("error_code")
@@ -147,7 +150,11 @@ class TelegramProvider(HttpProvider):
             )
         return result, body
 
-    def send(self, request: NotificationRequest) -> ProviderResult:
+    def send(self, request: NotificationRequest) -> ProviderResult:  # noqa: PLR0911 -- independent transport gates
+        if request.responder_policy is not None and (
+            request.responder_policy.private_chat_id != self.settings.telegram_chat_id
+        ):
+            return ProviderResult("terminal-failure", "private-chat-policy-mismatch")
         payload: dict[str, object] = {
             "chat_id": self.settings.telegram_chat_id,
             "text": f"{request.title}\n\n{request.message}",
@@ -163,9 +170,9 @@ class TelegramProvider(HttpProvider):
         plain = part["plain"] if isinstance(part, dict) else str(payload["text"])
         if len(str(plain).encode("utf-16-le")) // 2 > 4096:
             return ProviderResult("terminal-failure", "message-too-long")
-        if request.response_actions:
+        if request.response_actions or request.url_buttons:
             secret = self.settings.telegram_webhook_secret
-            if secret is None:
+            if request.response_actions and secret is None:
                 return ProviderResult("terminal-failure", "provider-unconfigured")
             payload["reply_markup"] = {
                 "inline_keyboard": [
@@ -173,11 +180,17 @@ class TelegramProvider(HttpProvider):
                         {
                             "text": action.label,
                             "callback_data": callback_data(
-                                request.request_id, index, secret.get_secret_value()
+                                request.request_id,
+                                index,
+                                secret.get_secret_value() if secret else "",
                             ),
                         }
                     ]
                     for index, action in enumerate(request.response_actions)
+                ]
+                + [
+                    [{"text": button.label, "url": str(button.url)}]
+                    for button in request.url_buttons
                 ]
             }
         result, body = self.call("sendMessage", payload)
@@ -194,7 +207,44 @@ class TelegramProvider(HttpProvider):
             message.get("message_id"), int
         ):
             return ProviderResult("terminal-failure", "invalid-response")
+        if request.responder_policy is not None:
+            chat = message.get("chat")
+            if (
+                not isinstance(chat, dict)
+                or chat.get("id") != request.responder_policy.private_chat_id
+                or chat.get("type") != "private"
+            ):
+                return ProviderResult("terminal-failure", "invalid-response")
         return ProviderResult("delivered", message_id=message["message_id"])
+
+    def edit(self, chat_id: int, message_id: int, text: str) -> ProviderResult:
+        """Replay the same frozen terminal edit on its stored message only."""
+        if len(text.encode("utf-16-le")) // 2 > 4096:
+            return ProviderResult("terminal-failure", "message-too-long")
+        result, body = self.call(
+            "editMessageText",
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": text,
+                "reply_markup": {"inline_keyboard": []},
+            },
+        )
+        if result.error_code == "http-400" and str(
+            body.get("description", "")
+        ).startswith("Bad Request: message is not modified"):
+            return ProviderResult("delivered")
+        if result.outcome == "delivered":
+            message = body.get("result")
+            if (
+                not isinstance(message, dict)
+                or message.get("message_id") != message_id
+                or not isinstance(message.get("chat"), dict)
+                or message["chat"].get("id") != chat_id
+                or message.get("text") != text
+            ):
+                return ProviderResult("terminal-failure", "invalid-response")
+        return result
 
     def acknowledge(
         self, callback_id: str, *, text: str | None = None

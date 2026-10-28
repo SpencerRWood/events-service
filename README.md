@@ -18,6 +18,9 @@ declarative policy to direct requests and broker events, delivers through ntfy,
 Telegram and SMTP adapters, suppresses repeated conditions, and captures generic
 Telegram responses. Both expose scoped history and retry APIs. Neither service
 executes workflow actions.
+The [S04 interactive transport contract](docs/interactive-transport.md) adds
+non-consuming HTTPS buttons, per-request private-chat responder constraints,
+authenticated response provenance and durable terminal edits of stored messages.
 Dagster and originating services own orchestration. Infrastructure owns production
 deployment, external PostgreSQL, secret injection, promotion and rollback.
 
