@@ -11,9 +11,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from events_service.config import Scope
-from events_service.contracts import EventEnvelope, Receipt
+from events_service.contracts import EventEnvelope, NotificationEdit, Receipt
+from events_service.message_edits import describe
 from events_service.notification_lifecycle import NotificationLifecycle
 from events_service.notification_models import (
+    MessageEdit,
     NotificationJob,
     NotificationState,
     RecoveryNotificationPart,
@@ -52,6 +54,12 @@ def register_notification_routes(app: FastAPI) -> None:  # noqa: PLR0915 -- serv
         credential: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
     ) -> str:
         return auth_scope("notifications:retry", request, credential)
+
+    def writer(
+        request: Request,
+        credential: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+    ) -> str:
+        return auth_scope("notifications:write", request, credential)
 
     def relay(
         request: Request,
@@ -225,6 +233,44 @@ def register_notification_routes(app: FastAPI) -> None:  # noqa: PLR0915 -- serv
                 )
             ]
 
+    @app.post("/v1/notifications/{request_id}/edits", status_code=202)
+    def edit_message(
+        request_id: UUID,
+        edit: NotificationEdit,
+        request: Request,
+        source: Annotated[str, Depends(writer)],
+    ) -> dict[str, object]:
+        lifecycle: NotificationLifecycle = request.app.state.notifications
+        try:
+            result = lifecycle.edits.submit(request_id, source, edit)
+        except IdempotencyConflictError:
+            raise HTTPException(
+                409, "Terminal edit identity or outcome conflict"
+            ) from None
+        except ValueError:
+            raise HTTPException(
+                422, "Invalid terminal edit or original message unavailable"
+            ) from None
+        if result is None:
+            raise HTTPException(404, "Notification not found")
+        return result
+
+    @app.get("/v1/notifications/{request_id}/edits")
+    def message_edits(
+        request_id: UUID,
+        request: Request,
+        source: Annotated[str, Depends(reader)],
+    ) -> list[dict[str, object]]:
+        detail(request, request_id, source)
+        lifecycle: NotificationLifecycle = request.app.state.notifications
+        with Session(lifecycle.engine) as session:
+            return [
+                describe(row)
+                for row in session.scalars(
+                    select(MessageEdit).where(MessageEdit.request_id == request_id)
+                )
+            ]
+
     @app.post(
         "/v1/notifications/{request_id}/channels/{channel}/retry", status_code=202
     )
@@ -252,6 +298,7 @@ def register_notification_routes(app: FastAPI) -> None:  # noqa: PLR0915 -- serv
             text = {
                 "already-answered": "This request has already been answered.",
                 "expired": "This request has expired.",
+                "terminal-outcome": "This request has a terminal outcome.",
             }.get(str(result.get("reason")), "Response recorded.")
             acknowledged = provider.acknowledge(update.callback_query.id, text=text)
             if acknowledged.outcome == "transient-failure":

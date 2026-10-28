@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from events_service.config import Settings
 from events_service.notification_models import (
+    MessageEdit,
     NotificationJob,
     NotificationMessage,
     NotificationState,
@@ -33,6 +34,17 @@ def cleanup(engine: Engine, settings: Settings, *, as_of: datetime) -> dict[str,
         session.execute(
             delete(SuppressionWindow).where(SuppressionWindow.until < as_of)
         )
+        removed[MessageEdit.__tablename__] = len(
+            session.scalars(
+                delete(MessageEdit)
+                .where(
+                    MessageEdit.status == "delivered",
+                    MessageEdit.updated_at
+                    < as_of - timedelta(days=settings.response_retention_days),
+                )
+                .returning(MessageEdit.id)
+            ).all()
+        )
         removed[NotificationMessage.__tablename__] = len(
             session.scalars(
                 delete(NotificationMessage)
@@ -43,6 +55,7 @@ def cleanup(engine: Engine, settings: Settings, *, as_of: datetime) -> dict[str,
                         NotificationState.id == NotificationMessage.request_id,
                         NotificationState.response_state == "awaiting-response",
                     ),
+                    ~exists().where(MessageEdit.message_ref == NotificationMessage.id),
                 )
                 .returning(NotificationMessage.id)
             ).all()
@@ -51,7 +64,9 @@ def cleanup(engine: Engine, settings: Settings, *, as_of: datetime) -> dict[str,
             session.scalars(
                 delete(NotificationJob)
                 .where(
-                    NotificationJob.status.not_in(["pending", "transient-failure"]),
+                    NotificationJob.status.not_in(
+                        ["pending", "transient-failure", "dispatching"]
+                    ),
                     ~exists().where(
                         RecoveryNotificationPart.request_id
                         == NotificationJob.request_id,
@@ -156,6 +171,7 @@ def cleanup(engine: Engine, settings: Settings, *, as_of: datetime) -> dict[str,
                     exists().where(
                         RecoveryNotificationPart.request_id == NotificationRecord.id
                     ),
+                    exists().where(MessageEdit.request_id == NotificationRecord.id),
                 ),
             ),
         ):
