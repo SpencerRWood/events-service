@@ -8,9 +8,15 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from events_service.contracts import Name, NormalizedResponse, NotificationRequest
+from events_service.contracts import (
+    Name,
+    NormalizedResponse,
+    NotificationRequest,
+    TelegramProvenance,
+)
 from events_service.notification_lifecycle import NotificationLifecycle
 from events_service.notification_models import (
+    MessageEdit,
     NotificationMessage,
     NotificationState,
 )
@@ -19,12 +25,16 @@ from events_service.storage import NotificationRecord, ResponseRecord
 
 
 class TelegramUser(BaseModel):
-    id: int
+    id: int = Field(strict=True)
+
+
+class TelegramChat(TelegramUser):
+    type: str | None = None
 
 
 class TelegramMessage(BaseModel):
     message_id: int = Field(ge=1)
-    chat: TelegramUser
+    chat: TelegramChat
 
 
 class TelegramQuery(BaseModel):
@@ -75,6 +85,16 @@ def capture(
         if state is None or parent is None or message is None:
             raise HTTPException(404, "Notification message not found")
         request = NotificationRequest.model_validate(parent.payload)
+        policy = request.responder_policy
+        if policy is not None and (
+            query.sender.id not in policy.user_ids
+            or query.message.chat.id != policy.private_chat_id
+            or query.message.chat.type != "private"
+            or query.sender.id != query.message.chat.id
+        ):
+            raise HTTPException(
+                403, "Callback does not satisfy request responder policy"
+            )
         if index >= len(request.response_actions):
             raise HTTPException(422, "Undeclared response action")
         action = request.response_actions[index].action
@@ -93,6 +113,13 @@ def capture(
             ):
                 raise HTTPException(409, "Callback identity conflict")
             return {"response": previous.payload, "duplicate": True}
+        if (
+            session.scalar(
+                select(MessageEdit.id).where(MessageEdit.request_id == request_id)
+            )
+            is not None
+        ):
+            return {"ignored": True, "reason": "terminal-outcome"}
         # A new press on an answered message is terminal, not a new response.
         # Acknowledge it successfully so Telegram clears the spinner and stops
         # retrying; keep authentication and message/signature checks above.
@@ -115,6 +142,14 @@ def capture(
             provider="telegram",
             provider_response_id=query.id,
             data={"message_id": query.message.message_id},
+            telegram_provenance=TelegramProvenance(
+                user_id=query.sender.id,
+                chat_id=query.message.chat.id,
+                chat_type=query.message.chat.type,
+                message_id=query.message.message_id,
+                update_id=update.update_id,
+                request_policy_verified=policy is not None,
+            ),
         )
         payload = response.model_dump(mode="json")
         session.add(

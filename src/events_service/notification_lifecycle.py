@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from events_service.config import Settings
 from events_service.contracts import NotificationRequest
+from events_service.message_edits import MessageEdits
 from events_service.notification_models import (
     NotificationJob,
     NotificationMessage,
@@ -36,6 +37,7 @@ class NotificationLifecycle:
         self.settings = settings
         self.providers = providers
         self.router = NotificationRouter(settings.notification_policies)
+        self.edits = MessageEdits(engine, settings, providers)
 
     def schedule(
         self, session: Session, request: NotificationRequest, accepted_at: datetime
@@ -46,6 +48,19 @@ class NotificationLifecycle:
         )
         if request.response_actions and channels and "telegram" not in channels:
             raise ValueError("Interactive notifications require Telegram")
+        if request.url_buttons and channels and "telegram" not in channels:
+            raise ValueError("URL buttons require Telegram")
+        if request.responder_policy is not None and (
+            channels != ["telegram"]
+            or request.responder_policy.private_chat_id
+            != self.settings.telegram_chat_id
+            or (
+                self.settings.telegram_allowed_user_ids
+                and not request.responder_policy.user_ids
+                <= self.settings.telegram_allowed_user_ids
+            )
+        ):
+            raise ValueError("Responder policy conflicts with Telegram configuration")
         suppressed = not channels or self.is_suppressed(session, request, accepted_at)
         expired = (
             request.response_deadline is not None
@@ -176,6 +191,9 @@ class NotificationLifecycle:
             for state in rows:
                 state.response_state = "expired"
                 state.updated_at = as_of
+                parent = session.get(NotificationRecord, state.id)
+                if parent is not None:
+                    self.edits.expired(session, parent, as_of)
                 session.execute(
                     update(NotificationJob)
                     .where(
@@ -189,6 +207,8 @@ class NotificationLifecycle:
     def deliver_one(self, *, as_of: datetime | None = None) -> bool:
         now = as_of or datetime.now(UTC)
         self.expire(as_of=now)
+        if self.edits.deliver_one(now):
+            return True
         with Session(self.engine) as session, session.begin():
             row = session.execute(
                 select(NotificationJob, NotificationState)
@@ -229,10 +249,12 @@ class NotificationLifecycle:
                 )
                 return True
             provider = self.providers.get(job.channel)
-            if (
-                job.channel == "telegram"
-                and request.source == "recovery-verification"
-                and request.context.get("event_type") == "recovery.run-completed"
+            if job.channel == "telegram" and (
+                request.responder_policy is not None
+                or (
+                    request.source == "recovery-verification"
+                    and request.context.get("event_type") == "recovery.run-completed"
+                )
             ):
                 # Commit intent before the remote side effect. A crash cannot
                 # roll this back into a pending job that sends a second message.
@@ -265,7 +287,7 @@ class NotificationLifecycle:
                 job.status = "dispatching"
                 job.updated_at = now
                 session.commit()
-                return self._deliver_recovery_telegram(identity, request, now)
+                return self._deliver_durable_telegram(identity, request, now)
             result = (
                 provider.send(request)
                 if provider is not None
@@ -313,7 +335,7 @@ class NotificationLifecycle:
             state.updated_at = completed
             return True
 
-    def _deliver_recovery_telegram(
+    def _deliver_durable_telegram(
         self, identity: UUID, request: NotificationRequest, now: datetime
     ) -> bool:
         provider = self.providers.get("telegram")
@@ -398,6 +420,17 @@ class NotificationLifecycle:
                         delivered_at=now,
                     )
                 )
+                session.flush()
+                state = session.get(
+                    NotificationState, request.request_id, with_for_update=True
+                )
+                parent = session.get(NotificationRecord, request.request_id)
+                if (
+                    state is not None
+                    and parent is not None
+                    and state.response_state == "expired"
+                ):
+                    self.edits.expired(session, parent, now)
         return True
 
     async def run(self, stop: asyncio.Event) -> None:
@@ -448,7 +481,6 @@ class NotificationLifecycle:
                 raise ValueError("Reconcile uncertain Telegram part before retry")
             if (
                 channel == "telegram"
-                and source == "recovery-verification"
                 and session.scalar(
                     select(NotifyDelivery.id)
                     .where(
@@ -472,6 +504,7 @@ class NotificationLifecycle:
                 "expired",
                 "responded",
                 "suppressed",
+                "closed",
             } or job.status not in {"terminal-failure", "transient-failure"}:
                 raise ValueError("Only failed, active notifications can be retried")
             job.status = "pending"

@@ -10,6 +10,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    HttpUrl,
     JsonValue,
     model_validator,
 )
@@ -51,6 +52,43 @@ class ResponseAction(Contract):
     label: Annotated[str, Field(min_length=1, max_length=128)]
 
 
+class UrlButton(Contract):
+    label: Annotated[str, Field(min_length=1, max_length=128)]
+    url: HttpUrl = Field(max_length=2048)
+
+    @model_validator(mode="after")
+    def validate_url(self) -> Self:
+        if self.url.scheme != "https" or self.url.username or self.url.password:
+            raise ValueError("URL buttons require credential-free HTTPS URLs")
+        return self
+
+
+class ResponderPolicy(Contract):
+    """Source-declared identity, checked against authenticated Telegram updates."""
+
+    user_ids: set[Annotated[int, Field(strict=True, gt=0)]] = Field(
+        min_length=1, max_length=16
+    )
+    private_chat_id: int = Field(strict=True, gt=0)
+
+
+class TelegramProvenance(Contract):
+    webhook_authenticated: Literal[True] = True
+    callback_signature_verified: Literal[True] = True
+    user_id: int
+    chat_id: int
+    chat_type: str | None
+    message_id: int
+    update_id: int
+    request_policy_verified: bool
+
+
+class NotificationEdit(Contract):
+    edit_id: UUID
+    outcome: Literal["merged", "rejected", "expired", "blocked"]
+    message: Text
+
+
 class NotificationRequest(Contract):
     request_id: UUID = Field(default_factory=uuid4)
     source: Name
@@ -69,6 +107,8 @@ class NotificationRequest(Contract):
     context: dict[str, JsonValue] = Field(default_factory=dict)
     response_actions: list[ResponseAction] = Field(default_factory=list, max_length=16)
     response_deadline: AwareDatetime | None = None
+    url_buttons: list[UrlButton] = Field(default_factory=list, max_length=8)
+    responder_policy: ResponderPolicy | None = None
 
     @model_validator(mode="after")
     def validate_policy(self) -> Self:
@@ -81,6 +121,12 @@ class NotificationRequest(Contract):
             raise ValueError("response actions must be unique")
         if self.notification_type == "action-required" and not actions:
             raise ValueError("action-required requests require response actions")
+        if self.responder_policy is not None and (
+            not actions or self.response_deadline is None
+        ):
+            raise ValueError(
+                "Responder policy requires actions and an absolute deadline"
+            )
         return self
 
 
@@ -95,6 +141,7 @@ class NormalizedResponse(Contract):
     provider: Name
     provider_response_id: Name
     data: dict[str, JsonValue] = Field(default_factory=dict)
+    telegram_provenance: TelegramProvenance | None = None
 
 
 class Receipt(Contract):
